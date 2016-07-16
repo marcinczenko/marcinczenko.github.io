@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes" ?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title>Posts on marcin.czenko</title>
+    <link>https://marcinczenko.github.io/post/</link>
+    <description>Recent content in Posts on marcin.czenko</description>
+    <generator>Hugo -- gohugo.io</generator>
+    <lastBuildDate>Sat, 16 Jul 2016 17:48:05 +0200</lastBuildDate>
+    <atom:link href="https://marcinczenko.github.io/post/index.xml" rel="self" type="application/rss+xml" />
+    
+    <item>
+      <title>welcome</title>
+      <link>https://marcinczenko.github.io/post/welcome/</link>
+      <pubDate>Sat, 16 Jul 2016 17:48:05 +0200</pubDate>
+      
+      <guid>https://marcinczenko.github.io/post/welcome/</guid>
+      <description>
+
+&lt;p&gt;I used to host my blog on &lt;a href=&#34;https://www.tumblr.com/&#34;&gt;Tumblr&lt;/a&gt;. Unfortunately, Tumblr does not make the editting work easy and I had countless moments of frustration when working with Markdown.
+So this is why I decided for ultimate simplicity and I went for statically generated blog site hosted at github, which seems to be one of the best places in this world to host one&amp;rsquo;s engineering blog.&lt;/p&gt;
+
+&lt;p&gt;To make everything easy to work with, I am using &lt;a href=&#34;https://gohugo.io&#34;&gt;Hugo&lt;/a&gt; - the best static page generator I saw so far!&lt;/p&gt;
+
+&lt;p&gt;This post is more about testing just a couple of the formattings that I consider must-haves.&lt;/p&gt;
+
+&lt;h2 id=&#34;header&#34;&gt;Header&lt;/h2&gt;
+
+&lt;p&gt;Text with &lt;em&gt;italics&lt;/em&gt; and &lt;strong&gt;bold&lt;/strong&gt;, and a link &lt;a href=&#34;https://github.com/marcinczenko&#34;&gt;marcinczenko&lt;/a&gt;.&lt;/p&gt;
+
+&lt;p&gt;A bit of inline source code &lt;code&gt;brew install hugo&lt;/code&gt;, and a code block:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;let array = [1,2,3,4,5]
+
+array.map({$0*$0})
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;Nice! But can it handle images?&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://marcinczenko.github.io/img/welcome/commodore64.jpg&#34; alt=&#34;Commodore64&#34; /&gt;&lt;/p&gt;
+</description>
+    </item>
+    
+  </channel>
+</rss>
