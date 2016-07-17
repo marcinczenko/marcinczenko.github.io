@@ -274,49 +274,49 @@ button,
 
 @media (min-width: 375px) { 
   .container {
-    max-width: 16em;
+    max-width: 17em;
   }
 }
 
 @media (min-width: 414px) { 
   .container {
-    max-width: 20em;
+    max-width: 19em;
   }
 }
 
 @media (min-width: 480px) { 
   .container {
+    max-width: 24em;
+  }
+}
+
+@media (min-device-width: 320px) and (orientation : landscape) { 
+  .container {
     max-width: 28em;
   }
 }    
 
-@media (min-width: 568px) { 
+@media (min-width: 667px) { 
   .container {
-    max-width: 36em;
+    max-width: 34em;
   }
 }
 
-@media (min-width: 667px) { 
+@media (min-width: 736px) { 
   .container {
     max-width: 39em;
   }
 }
 
-@media (min-width: 700px) { 
-  .container {
-    max-width: 38em;
-  }
-}
-
 @media (min-width: 800px) { 
   .container {
-    max-width: 44em;
+    max-width: 42em;
   }
 }
 
 @media (min-width: 1000px) { 
   .container {
-    max-width: 46em;
+    max-width: 48em;
   }
 }
 
