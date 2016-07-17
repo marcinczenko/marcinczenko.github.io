@@ -40,5 +40,124 @@ array.map({$0*$0})
 </description>
     </item>
     
+    <item>
+      <title>Around Type Erasure in Swift</title>
+      <link>https://marcinczenko.github.io/post/around-type-erasure-in-swift/</link>
+      <pubDate>Sat, 25 Jun 2016 00:00:00 +0000</pubDate>
+      
+      <guid>https://marcinczenko.github.io/post/around-type-erasure-in-swift/</guid>
+      <description>
+
+&lt;p&gt;WWDC 2016 being already a past event (with lots of exiting material to watch), I&amp;rsquo;ve finally found more time to look more carefully to one of the most important programming paradims promoted in Swift: Protocol-Oriented Pragramming. &lt;a href=&#34;https://developer.apple.com/videos/play/wwdc2015/408/&#34;&gt;Protocol-Oriented Programming in Swift&lt;/a&gt; was a great talk at WWDC 2015, where the concept was beautfully explained and demonstrated by Dave Abrahams. During this year&amp;rsquo;s WWDC 2016 we have a follow-up: &lt;a href=&#34;https://developer.apple.com/videos/play/wwdc2016/419/&#34;&gt;Protocol and Value Oriented Programming in UIKit Apps&lt;/a&gt;, which immediatelly invites us to watch again another great session from WWDC 2015: &lt;a href=&#34;https://developer.apple.com/videos/play/wwdc2015/414/&#34;&gt;Building Better Apps with Value Types in Swift&lt;/a&gt;.&lt;/p&gt;
+
+&lt;p&gt;The protocol-oriented programming is a powerful concept and I still need to digest it and reflect on it trying to use it in our production code. Here we will take a short look at a technique called &lt;em&gt;type erasure&lt;/em&gt;, which comes handy when dealing with generic protocols.&lt;/p&gt;
+
+&lt;h3 id=&#34;the-problem&#34;&gt;The problem&lt;/h3&gt;
+
+&lt;p&gt;Say you have a protocol:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;protocol Logger {
+    associatedtype LoggerItemType
+    func log(item: LoggerItemType)
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;and you have a type that uses it:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;struct Proccess {
+
+    let logger: Logger
+
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;Unfortunately, this will fail with compile error saying: &lt;em&gt;Protocol &amp;lsquo;Logger&amp;rsquo; can only be used as a generic constraint because it has Self or associated type requirements&lt;/em&gt;.&lt;/p&gt;
+
+&lt;h3 id=&#34;the-solution&#34;&gt;The solution&lt;/h3&gt;
+
+&lt;p&gt;This problem can be solved by applying so called Type-Erasure technique in which we wrap the generic protocol, &lt;code&gt;Logger&lt;/code&gt; in our case), in another type conforming to the same protocol (&lt;code&gt;Logger&lt;/code&gt; again) and delegating all requirements to an internal object. Such &lt;em&gt;wrappers&lt;/em&gt; are often named &lt;code&gt;Any{Protocol}&lt;/code&gt;:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;struct AnyLogger&amp;lt;LoggerItemType&amp;gt; : Logger {
+
+    let _log: LoggerItemType -&amp;gt; ()
+
+    init&amp;lt;BaseType: Logger where BaseType.LoggerItemType == LoggerItemType&amp;gt;(base: BaseType) {
+        _log = base.log
+    }
+
+    func log(item: LoggerItemType) {
+        _log(item)
+    }
+}
+
+struct IntLogger: Logger {
+    func log(item: Int) {
+        print(&amp;quot;IntLogger: \(item)&amp;quot;)
+    }
+}
+
+struct Process&amp;lt;T&amp;gt; {
+
+    let logger: AnyLogger&amp;lt;T&amp;gt;
+}
+
+let process = Process(logger: AnyLogger(base: IntLogger()))
+
+process.logger.log(24) // prints &#39;24&#39;
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;This solves the problem but when &lt;code&gt;Logger&lt;/code&gt; protocol has many requirements, &lt;code&gt;AnyLogger&lt;/code&gt; has to bridge all of them. Also every time you extend the &lt;code&gt;Logger&lt;/code&gt; protocol, you need to update &lt;code&gt;AnyLogger&lt;/code&gt; as well.&lt;/p&gt;
+
+&lt;p&gt;We can improve this situation - at the cost of an extra indirection - by introducing a logger provider and applying type-erasure on it:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;protocol LoggerProvider {
+    associatedtype LoggerType
+
+    func get() -&amp;gt; LoggerType
+}
+
+struct AnyLoggerProvider&amp;lt;LoggerType&amp;gt;: LoggerProvider {
+    let _get: () -&amp;gt; LoggerType
+
+    init&amp;lt;BaseType: LoggerProvider where BaseType.LoggerType == LoggerType&amp;gt;(base: BaseType) {
+        _get = base.get
+    }
+
+    func get() -&amp;gt; LoggerType {
+        return _get()
+    }
+}
+
+struct IntLoggerProvider: LoggerProvider {
+
+    let intLogger: IntLogger
+
+    func get() -&amp;gt; IntLogger {
+        return intLogger
+    }
+}
+
+struct Process&amp;lt;T&amp;gt; {
+    let loggerProvider: AnyLoggerProvider&amp;lt;T&amp;gt;
+}
+
+let process = Process(loggerProvider: AnyLoggerProvider(base: IntLoggerProvider(intLogger: IntLogger())))
+
+process.loggerProvider.get().log(24)
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;We see that, now we got one extra intermediate call, but we do not have to duplicate the &lt;code&gt;Logger&lt;/code&gt; requirements in the wrapper.&lt;/p&gt;
+
+&lt;p&gt;Get the playground here: &lt;a href=&#34;https://gist.github.com/marcinczenko/d448780afaa499ba683d5160b9aae1d3#file-aroundtypeerasureinswift-playground&#34;&gt;AroundTypeErasureInSwift.playground&lt;/a&gt;.&lt;/p&gt;
+
+&lt;h3 id=&#34;further-reading&#34;&gt;Further Reading&lt;/h3&gt;
+
+&lt;ol&gt;
+&lt;li&gt;&lt;a href=&#34;http://robnapier.net/erasure&#34;&gt;A Little Respect for AnySequence&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&#34;http://stackoverflow.com/a/34584464/1272679&#34;&gt;StackOverflow. Anwer to question: How to use generic protocol as a variable type?&lt;/a&gt;&lt;/li&gt;
+&lt;/ol&gt;
+</description>
+    </item>
+    
   </channel>
 </rss>

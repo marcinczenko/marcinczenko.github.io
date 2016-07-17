@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <meta http-equiv="content-type" content="text/html; charset=utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
+<title> Around Type Erasure in Swift &middot; marcin.czenko </title>
+
+
+<link rel="stylesheet" href="https://marcinczenko.github.io/css/slim.css">
+<link rel="stylesheet" href="https://marcinczenko.github.io/css/highlight.min.css">
+<link href='https://fonts.googleapis.com/css?family=Source+Sans+Pro:400,700|Source+Code+Pro' rel='stylesheet' type='text/css'>
+
+<link rel="apple-touch-icon-precomposed" sizes="144x144" href="https://marcinczenko.github.io/apple-touch-icon-144-precomposed.png">
+<link rel="shortcut icon" href="https://marcinczenko.github.io/favicon.ico">
+
+
+<link href="" rel="alternate" type="application/rss+xml" title="marcin.czenko" />
+
+</head>
+
+<body>
+  <div class="container">
+    <div class="header">
+  <h1 class="site-title"><a href="https://marcinczenko.github.io/">marcin.czenko</a></h1>
+  <p class="site-tagline">engineering blog</p>
+  <div class="nav">
+    <a class="nav-btn" href="#">
+      <span class="ci ci-burger"></span>
+    </a>
+    <ul class="nav-list">
+       
+	  <li class="spacer">&ac;</li>
+
+      <li><a href="https://github.com/marcinczenko">Github</a></li> 
+      <li><a href="https://twitter.com/mczenko">Twitter</a></li> 
+    </ul>
+  </div>
+</div>
+    <div class="content">
+      <div class="posts">
+        <div class="post">
+          <h2 class="post-title"><a href="https://marcinczenko.github.io/post/around-type-erasure-in-swift/">Around Type Erasure in Swift</a></h2>
+          <span class="post-date">Jun 25, 2016 </span>
+          <div class="post-content">
+            
+
+<p>WWDC 2016 being already a past event (with lots of exiting material to watch), I&rsquo;ve finally found more time to look more carefully to one of the most important programming paradims promoted in Swift: Protocol-Oriented Pragramming. <a href="https://developer.apple.com/videos/play/wwdc2015/408/">Protocol-Oriented Programming in Swift</a> was a great talk at WWDC 2015, where the concept was beautfully explained and demonstrated by Dave Abrahams. During this year&rsquo;s WWDC 2016 we have a follow-up: <a href="https://developer.apple.com/videos/play/wwdc2016/419/">Protocol and Value Oriented Programming in UIKit Apps</a>, which immediatelly invites us to watch again another great session from WWDC 2015: <a href="https://developer.apple.com/videos/play/wwdc2015/414/">Building Better Apps with Value Types in Swift</a>.</p>
+
+<p>The protocol-oriented programming is a powerful concept and I still need to digest it and reflect on it trying to use it in our production code. Here we will take a short look at a technique called <em>type erasure</em>, which comes handy when dealing with generic protocols.</p>
+
+<h3 id="the-problem">The problem</h3>
+
+<p>Say you have a protocol:</p>
+
+<pre><code>protocol Logger {
+    associatedtype LoggerItemType
+    func log(item: LoggerItemType)
+}
+</code></pre>
+
+<p>and you have a type that uses it:</p>
+
+<pre><code>struct Proccess {
+
+    let logger: Logger
+
+}
+</code></pre>
+
+<p>Unfortunately, this will fail with compile error saying: <em>Protocol &lsquo;Logger&rsquo; can only be used as a generic constraint because it has Self or associated type requirements</em>.</p>
+
+<h3 id="the-solution">The solution</h3>
+
+<p>This problem can be solved by applying so called Type-Erasure technique in which we wrap the generic protocol, <code>Logger</code> in our case), in another type conforming to the same protocol (<code>Logger</code> again) and delegating all requirements to an internal object. Such <em>wrappers</em> are often named <code>Any{Protocol}</code>:</p>
+
+<pre><code>struct AnyLogger&lt;LoggerItemType&gt; : Logger {
+
+    let _log: LoggerItemType -&gt; ()
+
+    init&lt;BaseType: Logger where BaseType.LoggerItemType == LoggerItemType&gt;(base: BaseType) {
+        _log = base.log
+    }
+
+    func log(item: LoggerItemType) {
+        _log(item)
+    }
+}
+
+struct IntLogger: Logger {
+    func log(item: Int) {
+        print(&quot;IntLogger: \(item)&quot;)
+    }
+}
+
+struct Process&lt;T&gt; {
+
+    let logger: AnyLogger&lt;T&gt;
+}
+
+let process = Process(logger: AnyLogger(base: IntLogger()))
+
+process.logger.log(24) // prints '24'
+</code></pre>
+
+<p>This solves the problem but when <code>Logger</code> protocol has many requirements, <code>AnyLogger</code> has to bridge all of them. Also every time you extend the <code>Logger</code> protocol, you need to update <code>AnyLogger</code> as well.</p>
+
+<p>We can improve this situation - at the cost of an extra indirection - by introducing a logger provider and applying type-erasure on it:</p>
+
+<pre><code>protocol LoggerProvider {
+    associatedtype LoggerType
+
+    func get() -&gt; LoggerType
+}
+
+struct AnyLoggerProvider&lt;LoggerType&gt;: LoggerProvider {
+    let _get: () -&gt; LoggerType
+
+    init&lt;BaseType: LoggerProvider where BaseType.LoggerType == LoggerType&gt;(base: BaseType) {
+        _get = base.get
+    }
+
+    func get() -&gt; LoggerType {
+        return _get()
+    }
+}
+
+struct IntLoggerProvider: LoggerProvider {
+
+    let intLogger: IntLogger
+
+    func get() -&gt; IntLogger {
+        return intLogger
+    }
+}
+
+struct Process&lt;T&gt; {
+    let loggerProvider: AnyLoggerProvider&lt;T&gt;
+}
+
+let process = Process(loggerProvider: AnyLoggerProvider(base: IntLoggerProvider(intLogger: IntLogger())))
+
+process.loggerProvider.get().log(24)
+</code></pre>
+
+<p>We see that, now we got one extra intermediate call, but we do not have to duplicate the <code>Logger</code> requirements in the wrapper.</p>
+
+<p>Get the playground here: <a href="https://gist.github.com/marcinczenko/d448780afaa499ba683d5160b9aae1d3#file-aroundtypeerasureinswift-playground">AroundTypeErasureInSwift.playground</a>.</p>
+
+<h3 id="further-reading">Further Reading</h3>
+
+<ol>
+<li><a href="http://robnapier.net/erasure">A Little Respect for AnySequence</a></li>
+<li><a href="http://stackoverflow.com/a/34584464/1272679">StackOverflow. Anwer to question: How to use generic protocol as a variable type?</a></li>
+</ol>
+
+          </div>
+        </div>
+        <div class="pagination">
+          <a class="btn previous " href="https://marcinczenko.github.io/post/welcome/"> Prev</a>  
+        </div>
+      </div>
+    </div>
+    
+    <div id="disqus_thread"></div>
+    <script>
+      var disqus_config = function () {
+        this.page.url = "https://marcinczenko.github.io/post/around-type-erasure-in-swift/";
+        
+      };
+      (function() {
+        var d = document, s = d.createElement('script');
+        s.src = '//marcinczenko.disqus.com/embed.js';
+        s.setAttribute('data-timestamp', +new Date());
+        (d.head || d.body).appendChild(s);
+      })();
+    </script>
+    <noscript>Please enable JavaScript to view the <a href="https://disqus.com/?ref_noscript" rel="nofollow">comments powered by Disqus.</a></noscript>
+    
+    <div class="footer">
+  
+  <p>Copyright Marcin Czenko 2016. Powered by Hugo and the (modified) Slim theme.</p>
+  
+</div>
+
+  </div>
+  <script src="https://marcinczenko.github.io/js/slim.js"></script>
+  <script src="https://marcinczenko.github.io/js/highlight.min.js"></script>
+  <script>
+    hljs.initHighlightingOnLoad();
+  </script>
+  
+</body>
+
+</html>

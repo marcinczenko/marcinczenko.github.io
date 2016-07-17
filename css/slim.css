@@ -88,6 +88,7 @@ a {
 code {
   font-family: 'Source Code Pro', Monaco, Courier, monospace;
   font-size: 0.85rem;
+  overflow-x: scroll;
   color: #555;
   background-color: #f5f5f5;
   border: 1px solid #eef;
@@ -102,9 +103,9 @@ pre {
   font-size: 0.8rem;
   line-height: 1.4;
   white-space: pre;
-  white-space: pre-wrap;
-  word-break: break-all;
-  word-wrap: break-word;
+  // white-space: pre-wrap;
+  // word-break: break-all;
+  // word-wrap: break-word;
   background-color: #f9f9f9; }
 
 pre code {
@@ -214,7 +215,7 @@ button,
           transition: all 0.2s; }
 
 .nav-list .spacer {
-	text-align: center;
+    text-align: center;
 }
 
 .ci {
@@ -413,6 +414,5 @@ button,
 }
 
 .post-tags a {
-	color: #ccc;
+    color: #ccc;
 }
-
