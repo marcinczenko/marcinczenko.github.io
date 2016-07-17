@@ -19,7 +19,7 @@
 &lt;p&gt;I used to host my blog on &lt;a href=&#34;https://www.tumblr.com/&#34;&gt;Tumblr&lt;/a&gt;. Unfortunately, Tumblr does not make the editting work easy and I had countless moments of frustration when working with Markdown.
 So this is why I decided for ultimate simplicity and I went for statically generated blog site hosted at github, which seems to be one of the best places in this world to host one&amp;rsquo;s engineering blog.&lt;/p&gt;
 
-&lt;p&gt;Over next days (weeks?) my old blog from Tumblr will be moved over here.&lt;/p&gt;
+&lt;p&gt;Over next days (weeks?) my old blog from &lt;a href=&#34;http://blog.redgreenrefactor.eu&#34;&gt;Tumblr&lt;/a&gt; will be moved over here.&lt;/p&gt;
 
 &lt;p&gt;To make everything easy to work with, I am using &lt;a href=&#34;https://gohugo.io&#34;&gt;Hugo&lt;/a&gt; - the best static page generator I saw so far!&lt;/p&gt;
 
