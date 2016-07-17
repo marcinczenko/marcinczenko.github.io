@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <meta http-equiv="content-type" content="text/html; charset=utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
+<title> module exports vs exports in nodejs &middot; marcin.czenko </title>
+
+
+<link rel="stylesheet" href="https://marcinczenko.github.io/css/slim.css">
+<link rel="stylesheet" href="https://marcinczenko.github.io/css/highlight.min.css">
+<link href='https://fonts.googleapis.com/css?family=Source+Sans+Pro:400,700|Source+Code+Pro' rel='stylesheet' type='text/css'>
+
+<link rel="apple-touch-icon-precomposed" sizes="144x144" href="https://marcinczenko.github.io/apple-touch-icon-144-precomposed.png">
+<link rel="shortcut icon" href="https://marcinczenko.github.io/favicon.ico">
+
+
+<link href="" rel="alternate" type="application/rss+xml" title="marcin.czenko" />
+
+</head>
+
+<body>
+  <div class="container">
+    <div class="header">
+  <h1 class="site-title"><a href="https://marcinczenko.github.io/">marcin.czenko</a></h1>
+  <p class="site-tagline">engineering blog</p>
+  <div class="nav">
+    <a class="nav-btn" href="#">
+      <span class="ci ci-burger"></span>
+    </a>
+    <ul class="nav-list">
+       
+	  <li class="spacer">&ac;</li>
+
+      <li><a href="https://github.com/marcinczenko">Github</a></li> 
+      <li><a href="https://twitter.com/mczenko">Twitter</a></li> 
+    </ul>
+  </div>
+</div>
+    <div class="content">
+      <div class="posts">
+        <div class="post">
+          <h2 class="post-title"><a href="https://marcinczenko.github.io/post/module-exports-vs-exports-in-node-js/">module exports vs exports in nodejs</a></h2>
+          <span class="post-date">Nov 19, 2015 </span>
+          <div class="post-content">
+            
+
+<blockquote>
+<p>This post is a summary of the differences between <code>module.exports</code> and <code>exports</code> in <code>Node.js</code> described in the following note:
+ <a href="http://www.hacksparrow.com/node-js-exports-vs-module-exports.html">Node.js Module – exports vs module.exports</a>.</p>
+
+<p>The article comes from 2011 but then updated in 2014. You may want to take a look at the comments, they add valuable insights. I especially value the one from <strong>Adam Ahmed</strong>, and I decided to include it below for my own convenience.</p>
+</blockquote>
+
+<h3 id="module-exports-vs-exports"><code>module.exports</code> vs <code>exports</code></h3>
+
+<p>It might help clarify things to show how they are initialized. Essentially before your code runs, there is a code that runs like this:</p>
+
+<pre><code>var module = {...}; // stuff
+var exports = module.exports = {};
+</code></pre>
+
+<p>So both variables initially point to the same empty Object, but of course can be reassigned to any other value instead. So if you reassign the <code>exports</code> variable, it doesn’t affect <code>module.exports</code>. Similarly, if you reassign <code>module.exports</code>, it no longer affects <code>exports</code>. They will be pointing at different values.
+What makes <code>module.exports</code> the “real deal” is that when someone <code>require()</code>s your module, <code>require</code> essential does this:</p>
+
+<pre><code>function require(moduleName) {
+    var module = getModule(moduleName);
+    return module.exports;
+}
+</code></pre>
+
+<p>It might also help to say that <code>module</code> is the real deal more than <code>module.exports</code> is. Take this code for example:</p>
+
+<pre><code>var truth = module;
+var notExports = module.exports;
+truth.exports = { genre: ‘Rock’ };
+notExports.genre = ‘Blues';
+</code></pre>
+
+<p>‘Rock’ will be exported. Since <code>truth</code> is pointing to <code>module</code>, it can make lasting changes to the exports that <code>notExports</code> can’t.</p>
+
+          </div>
+        </div>
+        <div class="pagination">
+          <a class="btn previous " href="https://marcinczenko.github.io/post/using-swift-frameworks-from-objective-c-target/"> Prev</a>  
+        </div>
+      </div>
+    </div>
+    
+    <div id="disqus_thread"></div>
+    <script>
+      var disqus_config = function () {
+        this.page.url = "https://marcinczenko.github.io/post/module-exports-vs-exports-in-node-js/";
+        
+      };
+      (function() {
+        var d = document, s = d.createElement('script');
+        s.src = '//marcinczenko.disqus.com/embed.js';
+        s.setAttribute('data-timestamp', +new Date());
+        (d.head || d.body).appendChild(s);
+      })();
+    </script>
+    <noscript>Please enable JavaScript to view the <a href="https://disqus.com/?ref_noscript" rel="nofollow">comments powered by Disqus.</a></noscript>
+    
+    <div class="footer">
+  
+  <p>Copyright Marcin Czenko 2015-2016. Powered by Hugo and the (modified) Slim theme.</p>
+  
+</div>
+
+  </div>
+  <script src="https://marcinczenko.github.io/js/slim.js"></script>
+  <script src="https://marcinczenko.github.io/js/highlight.min.js"></script>
+  <script>
+    hljs.initHighlightingOnLoad();
+  </script>
+  
+</body>
+
+</html>

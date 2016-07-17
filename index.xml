@@ -19,6 +19,8 @@
 &lt;p&gt;I used to host my blog on &lt;a href=&#34;https://www.tumblr.com/&#34;&gt;Tumblr&lt;/a&gt;. Unfortunately, Tumblr does not make the editting work easy and I had countless moments of frustration when working with Markdown.
 So this is why I decided for ultimate simplicity and I went for statically generated blog site hosted at github, which seems to be one of the best places in this world to host one&amp;rsquo;s engineering blog.&lt;/p&gt;
 
+&lt;p&gt;Over next days (weeks?) my old blog from Tumblr will be moved over here.&lt;/p&gt;
+
 &lt;p&gt;To make everything easy to work with, I am using &lt;a href=&#34;https://gohugo.io&#34;&gt;Hugo&lt;/a&gt; - the best static page generator I saw so far!&lt;/p&gt;
 
 &lt;p&gt;This post is more about testing just a couple of the formattings that I consider must-haves.&lt;/p&gt;
@@ -41,7 +43,273 @@ array.map({$0*$0})
     </item>
     
     <item>
-      <title>Around Type Erasure in Swift</title>
+      <title>distributed persistance with swift and coredata</title>
+      <link>https://marcinczenko.github.io/post/distributed-persistance-with-swift-and-coredata/</link>
+      <pubDate>Thu, 30 Jun 2016 00:00:00 +0000</pubDate>
+      
+      <guid>https://marcinczenko.github.io/post/distributed-persistance-with-swift-and-coredata/</guid>
+      <description>
+
+&lt;p&gt;Component-based architectures give us high level of isolation and independence of the underlying components, but at the same time exibits potential risk of duplication. How would a component-based architecture work for iOS apps, especially when persistance is the key. Let&amp;rsquo;s experiment&amp;hellip;&lt;/p&gt;
+
+&lt;p&gt;Let me create a framerwork in which I will have seprate components. I want my components to be possibly independent from each other, but at the same time I want to limit duplication. And trying to push the idea to the extreme, if a component needs to store anything in CoreData (we will use CoreData in this example, but you can easily abstract it away and use different storage options), I let the component to have its own model and its own sqlite file - in other words rather than sharing one CoreData stack among all the components, each component maintains its own instance of the CoreData stack. I am not sure how robust this architecture would be, and how well will it scale in terms of perfomance, but the possibility of throwing a component away at any moment without worrying about other component is very appealing and may be a good option in some applications.&lt;/p&gt;
+
+&lt;p&gt;Every type that is supposed to be stored in CoreData has its domain level equivalent. CoreData&amp;rsquo;s managed objects, actually everything that&amp;rsquo;s related to CoreData can only occur in the CoreData stack  itself and in a wrapper that encapsulates low-level CoreData operations and translates between managed objects and the corresponding domain types.&lt;/p&gt;
+
+&lt;p&gt;Above the CoreData wrapper, there is a &lt;em&gt;data store&lt;/em&gt; that provides high level persistance interface and enforces data integrity.&lt;/p&gt;
+
+&lt;p&gt;The CoreData wrapper and the data store provide a uniform set of operations that can be reused among components. Each component will have its own instances of the CoreData stack, the CoreData wrapper, and a data store, but I want them all to share the same source code.&lt;/p&gt;
+
+&lt;h3 id=&#34;domain-objects&#34;&gt;Domain objects&lt;/h3&gt;
+
+&lt;p&gt;All our domain objects have to conform to the following protocol:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;protocol EPQuantity {
+    associatedtype EPQuantityType
+    func getValue() -&amp;gt; EQQuantityType
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;The &lt;code&gt;associatedtype&lt;/code&gt; is a placeholder for the actuall type that will be provided by the type conforming to the protocol. Our protocol requires that a type conforming to it must have a method &lt;code&gt;getValue&lt;/code&gt; returing a value of a type that is specific to the given domain object. This makes the protocol a good candidate for many types as long they can provide a value.&lt;/p&gt;
+
+&lt;p&gt;Now, lets take two example domain level value types conforming to the &lt;code&gt;EPQuantity&lt;/code&gt; protocol:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;struct EPAcceleration: EPQuantity, CustomStringConvertible {
+    let acceleration: Double
+
+    var description: String {
+        return &amp;quot;EPAcceleration(acceleration: \(acceleration))&amp;quot;
+    }
+
+    func getValue() -&amp;gt; Double {
+        return acceleration
+    }
+}
+
+struct EPSpeed: EPQuantity, CustomStringConvertible {
+    let speed: Int
+
+    var description: String {
+        return &amp;quot;EPSpeed(speed: \(speed))&amp;quot;
+    }
+
+    func getValue() -&amp;gt; Int {
+        return speed
+    }
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;What is important to see is that both types represents quantities of different types: we have an &lt;code&gt;Int&lt;/code&gt; for the speed, but &lt;code&gt;Double&lt;/code&gt; for acceleration.&lt;/p&gt;
+
+&lt;h3 id=&#34;data-store&#34;&gt;Data store&lt;/h3&gt;
+
+&lt;p&gt;Now we want to be able to store the domain objects in a data store. We may be tempted to start with the following implementation:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;class EPDataStore {
+    func store(item: EPQuantity)
+    func getAll() -&amp;gt; EPQuantity
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;The compiler, however, will give us the following compile-time error: &lt;em&gt;Protocol &amp;lsquo;EPQuantity&amp;rsquo; can only be used as a generic constraint because it has Self or associated type requirements&lt;/em&gt;.&lt;/p&gt;
+
+&lt;p&gt;To fix this problem we can either do:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;class EPDataStore {
+    func store&amp;lt;T: EPQuantity&amp;gt;(item: T) {
+
+    }
+
+    func getAll&amp;lt;T: EPQuantity&amp;gt;() -&amp;gt; [T]? {
+        return nil
+    }
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;or just:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;class EPDataStore&amp;lt;T: EPQuantity&amp;gt; {
+
+    func store(item: T) {
+
+    }
+
+    func getAll() -&amp;gt; [T]? {
+        return nil
+    }
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;The problem we may have with this implementation is that we may want to be slightly more specific about which types should be allowed to enter the store. For instance, &lt;code&gt;EPSpeed&lt;/code&gt; and &lt;code&gt;EPAcceleration&lt;/code&gt; being domain equivalent of some managed objects, will ultimately need to match the corresponding types of the attributes in the manged objects. We can immediatelly think of &lt;code&gt;Int&lt;/code&gt;, &lt;code&gt;Double&lt;/code&gt;, &lt;code&gt;NSTimeInterval&lt;/code&gt;, &lt;code&gt;String&lt;/code&gt;, &lt;code&gt;NSDate&lt;/code&gt;, &lt;code&gt;NSNumber&lt;/code&gt; and perhapes a couple of more options. For now, to support &lt;code&gt;EPSpeed&lt;/code&gt; and &lt;code&gt;EPAcceleration&lt;/code&gt;, we only need to support &lt;code&gt;Int&lt;/code&gt; and &lt;code&gt;Double&lt;/code&gt;. How can we make the type constraint in &lt;code&gt;EPDataStore&lt;/code&gt; more specific?&lt;/p&gt;
+
+&lt;p&gt;One way is to create another protocol and require that an instance of (a type implementing)&lt;code&gt;EPQuantity&lt;/code&gt; can be stored in our store if and only if the type returned by its &lt;code&gt;getValue&lt;/code&gt; requirement conforms to this new protocol. Let&amp;rsquo;s call this protocol &lt;code&gt;EPPersistable&lt;/code&gt;:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;protocol EPPersistable {}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;Now, let&amp;rsquo;s update &lt;code&gt;EPDataStore&lt;/code&gt; with a more specific type constraint:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;class EPDataStore&amp;lt;T: EPQuantity where T.EPQuantityValueType: EPPersistable&amp;gt; {
+
+    func store(item: T) {
+
+    }
+
+    func getAll() -&amp;gt; [T]? {
+        return nil
+    }
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;Now, if you try to create an instance of &lt;code&gt;DataStore&lt;/code&gt; for &lt;code&gt;EPSpeed&lt;/code&gt;:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;let dataStore = EPDataStore&amp;lt;EPSpeed&amp;gt;()
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;the compliler will complain with &lt;em&gt;Type &amp;lsquo;Int&amp;rsquo; does not conform to protocol &amp;lsquo;EPPersistable&amp;rsquo;&lt;/em&gt;. We can make the error go away by using an &lt;em&gt;extenssion&lt;/em&gt; to add protocol conformance:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;extension Int: EPPersistable {}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;and if we want to persist instances of &lt;code&gt;EPAcceleration&lt;/code&gt;, we would also need:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;extension Double: EPPersistable {}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;That&amp;rsquo;s nice, but let&amp;rsquo;s get back to our isolated components. Each is holding its own CoreData stack, a CoreData wrapper to translate between managed objects and domain objects, and a DataStore to handle data integrity or any other required logic. As a &lt;code&gt;DataStore&lt;/code&gt; dependency, we want the CoreData wrapper to provide a mapping between objects conforming to the &lt;code&gt;EPQuantity&lt;/code&gt; protocol and the corresponding managed objects that will land in our CoreData storage. As an example, &lt;code&gt;EPSpeed&lt;/code&gt; would be matched by the following managed object:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;@objc(EPSpeedCoreData)
+class EPSpeedCoreData: NSManagedObject {
+
+    // Insert code here to add functionality to your managed object subclass
+
+}
+
+extension EPSpeedCoreData {
+    @NSManaged var speed: Int32
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;Then, in order to be able to handle different managed objects through a common interface, we could add the following protocol:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;protocol EPCoreDataQuantity {
+    associatedtype EPCoreDataQuantityValueType
+    func getValue() -&amp;gt; EPCoreDataQuantityValueType
+    func setValue(value: EPCoreDataQuantityValueType)
+}
+
+extension EPSpeedCoreData:EPCoreDataQuantity {
+    func getValue() -&amp;gt; Int {
+        return Int(speed)
+    }
+
+    func setValue(value: Int) {
+        speed = Int32(value)
+    }
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;And finally, the skeleton of our universal CoreData wrapper could be defined by the following set of requirements:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;protocol EPPersistance {
+    associatedtype EPQuantityType
+    func write(item: EPQuantityType)
+    func read() -&amp;gt; [EPQuantityType]?
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;and fullfilled by the following type:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;class EPCoreDataWrapper&amp;lt;T: EPCoreDataQuantity, U: EPQuantity where T.EPCoreDataQuantityValueType: EPPersistable, U.EPQuantityValueType: EPPersistable&amp;gt;: EPPersistance {
+
+    func write(item: U) {
+
+    }
+
+    func read() -&amp;gt; [U]? {
+        return nil
+    }
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;And obviously, our &lt;code&gt;EPDataStore&lt;/code&gt; needs an instance of compatible CoreData wrapper, so obviously one could be tempted to try something like this:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;class EPDataStore&amp;lt;T: EPQuantity where T.EPQuantityValueType: EPPersistable&amp;gt; {
+
+    let persistance: EPPersistance
+
+    init(persistance: EPPersistance) {
+        self.persistance = persistance
+    }
+
+    func store(item: T) {
+        persistance.write(item)    
+    }
+
+    func getAll() -&amp;gt; [T]? {
+        return persistance.read()
+    }
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;But we will get the familiar error - this time regarding &lt;code&gt;EPPersistance&lt;/code&gt;: &lt;em&gt;Protocol &amp;lsquo;EPPersiatance&amp;rsquo; can only be used as a generic constraint because it has Self or associated type requirements&lt;/em&gt;.&lt;/p&gt;
+
+&lt;p&gt;The solution to this problem is commonly known as &lt;em&gt;Type Erasure&lt;/em&gt;, a technique that I also describe shortly in my other post &lt;a href=&#34;https://marcinczenko.github.io/post/around-type-erasure-in-swift/&#34;&gt;Around Type Erasure in Swift&lt;/a&gt;. We cannot refer to &lt;code&gt;EPPersistance&lt;/code&gt; directly because it has an associated type. We need to hide this fact from the compiler by wrapping up the EPPersistance inside another type that will not exbit the limitation that &lt;code&gt;EPPersistance&lt;/code&gt; has. To achieve that, we create a type that wraps an instance conforming to the &lt;code&gt;EPPersistance&lt;/code&gt; protocol:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;class EPAnyPersistance&amp;lt;T: EPQuantity where T.EPQuantityValueType: EPPersistable&amp;gt; : EPPersistance {
+
+    let _write: T -&amp;gt; ()
+    let _read: () -&amp;gt; [T]?
+
+    init&amp;lt;BaseType: EPPersistance where BaseType.EPQuantityType == T&amp;gt;(base: BaseType) {
+        _write = base.write
+        _read = base.read
+    }
+
+    func write(item: T) {
+        _write(item)
+    }
+
+    func read() -&amp;gt; [T]? {
+        return _read()
+    }
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;Now, it is safe to add a reference to the persistance object to our data store:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;class EPDataStore&amp;lt;T: EPQuantity where T.EPQuantityValueType: EPPersistable&amp;gt; {
+
+    let persistance: EPAnyPersistance&amp;lt;T&amp;gt;
+
+    init(persistance: EPAnyPersistance&amp;lt;T&amp;gt;) {
+      self.persistance = persistance
+    }
+
+    func store(item: T) {
+        persistance.write(item)
+    }
+
+    func getAll() -&amp;gt; [T]? {
+        return persistance.read()
+    }
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;We can create an instance of &lt;code&gt;EPDataStore&lt;/code&gt; for &lt;code&gt;EPSpeed&lt;/code&gt; type as follows:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;let dataStoreForSpeed = EPDataStore&amp;lt;EPSpeed&amp;gt;(persistance: EPAnyPersistance(base: EPCoreDataWrapper&amp;lt;EPSpeedCoreData, EPSpeed&amp;gt;()))
+
+dataStoreForSpeed.store(EPSpeed(speed: 125))
+dataStoreForSpeed.getAll()
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;Try it out in the playground:  &lt;a href=&#34;https://gist.github.com/marcinczenko/8c9bf9289d9f3a2eade4946b1e67af6e#file-experimentingwithpersistanceinswift-playground&#34;&gt;ExperimentingWithPersistanceInSwift.playground&lt;/a&gt;.&lt;/p&gt;
+</description>
+    </item>
+    
+    <item>
+      <title>around type erasure in swift</title>
       <link>https://marcinczenko.github.io/post/around-type-erasure-in-swift/</link>
       <pubDate>Sat, 25 Jun 2016 00:00:00 +0000</pubDate>
       
@@ -156,6 +424,276 @@ process.loggerProvider.get().log(24)
 &lt;li&gt;&lt;a href=&#34;http://robnapier.net/erasure&#34;&gt;A Little Respect for AnySequence&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;&lt;a href=&#34;http://stackoverflow.com/a/34584464/1272679&#34;&gt;StackOverflow. Anwer to question: How to use generic protocol as a variable type?&lt;/a&gt;&lt;/li&gt;
 &lt;/ol&gt;
+</description>
+    </item>
+    
+    <item>
+      <title>string conversions in swift</title>
+      <link>https://marcinczenko.github.io/post/string-conversions-in-swift/</link>
+      <pubDate>Fri, 20 May 2016 00:00:00 +0000</pubDate>
+      
+      <guid>https://marcinczenko.github.io/post/string-conversions-in-swift/</guid>
+      <description>&lt;p&gt;Say you have your own custom class:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;class MyClass {
+  let counter: Int
+
+  init(withCounter: Int) {
+          self.counter = withCounter
+  }
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;Now, you want it to be convertible to &lt;code&gt;String&lt;/code&gt;. One way of doing it is to create an extension to the &lt;code&gt;String&lt;/code&gt; class itself like this:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;extension String {
+  init(_ myClass: MyClass) {
+    self = &amp;quot;{ counter: \(myClass.counter) }&amp;quot; 
+  }
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;This will let you do:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;let str = String(MyClass(withCounter:25)) 
+// str is &amp;quot;{ counter: 25 }&amp;quot;
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;This may seem to be sufficient in many cases, but it does not seem to be truly the &lt;em&gt;Swift&lt;/em&gt; way. I realised this when working with testing framework (Nimble) and I realised that having just &lt;code&gt;String&lt;/code&gt; extension does not make Nimble to produce correct string descriptions of my class instances when testing. In particular, and you can test it easily in the playground, this will not work as expected:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;let str2 = &amp;quot;\(MyClass(withCounter:25))&amp;quot; 
+// str2 is &amp;quot;MyClass&amp;quot;
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;For the string interpolation to work as expected in this case, you would rather have to do this:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;let str3 = &amp;quot;\(String(MyClass(withCounter:25)))&amp;quot; 
+// str3 is &amp;quot;{ counter: 25 }&amp;quot;
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;This is not how you want to use string interpolation though.&lt;/p&gt;
+
+&lt;p&gt;This &lt;a href=&#34;http://vperi.com/2014/06/04/textual-representation-for-classes-in-swift/&#34;&gt;blog&lt;/a&gt; describes how this is supposed to be done correctly in Swift 1 (still with lots of pain), and &lt;a href=&#34;http://vperi.com/2015/09/19/textual-representation-for-classes-swift/&#34;&gt;here&lt;/a&gt; is the updated version for Swift 2.&lt;/p&gt;
+
+&lt;p&gt;To summarise, this is how you can extend &lt;code&gt;MyClass&lt;/code&gt;:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;class MyClass: CustomStringConvertible {
+  let counter: Int
+
+  var description: String {
+      return &amp;quot;{ counter: \(self.counter) }&amp;quot;
+    }
+
+    init(withCounter: Int) {
+      self.counter = withCounter
+  }
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;Now, the string interpolation should work as expected.
+You can download the gist playground file &lt;a href=&#34;https://gist.github.com/marcinczenko/f7d6dd3fbeb02dc1245d&#34;&gt;here&lt;/a&gt;.&lt;/p&gt;
+</description>
+    </item>
+    
+    <item>
+      <title>using swift frameworks from objective-c target</title>
+      <link>https://marcinczenko.github.io/post/using-swift-frameworks-from-objective-c-target/</link>
+      <pubDate>Sun, 17 Jan 2016 00:00:00 +0000</pubDate>
+      
+      <guid>https://marcinczenko.github.io/post/using-swift-frameworks-from-objective-c-target/</guid>
+      <description>
+
+&lt;blockquote&gt;
+&lt;p&gt;The code in this post was tested with Xcode Version 7.2 (7C68).&lt;/p&gt;
+
+&lt;p&gt;The accompanying source code can be found at &lt;a href=&#34;https://github.com/marcinczenko/UsingSwiftFrameworksFromObjectiveC&#34;&gt;github.com/marcinczenko/UsingSwiftFrameworksFromObjectiveC&lt;/a&gt;&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;p&gt;When working with legacy iOS products it may happens that you need to integrate with main application target that
+contains only Objective-C code. You want to take advantage of Swift but you want this nicely separated from the old
+legacy code. Creating a framework that will contain your Swift code is the answer.&lt;/p&gt;
+
+&lt;blockquote&gt;
+&lt;p&gt;There is no something like a Swift framework. A framework can include both Objective-C and Swift code. In this short post we focus on a framework containing only Swift code.&lt;/p&gt;
+
+&lt;p&gt;If you want to share your Swift code, a framework is necessary. You can&amp;rsquo;t just use a static library as they do not support Swift code.&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;p&gt;The following steps describe the whole process of creating a framework and adding it to an Objective-C-only target.&lt;/p&gt;
+
+&lt;blockquote&gt;
+&lt;p&gt;If you want to follow with the source code from &lt;a href=&#34;https://github.com/marcinczenko/UsingSwiftFrameworksFromObjectiveC&#34;&gt;github.com/marcinczenko/UsingSwiftFrameworksFromObjectiveC&lt;/a&gt; please clone the repository and checkout the very first commit with comment &lt;code&gt;Initial commit.&lt;/code&gt; (commit 73e8dde) and then follow the steps. The last commit corresponds to the final state.&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;h3 id=&#34;step-1-add-a-taget&#34;&gt;Step 1 - add a taget&lt;/h3&gt;
+
+&lt;p&gt;Select your project in the Project Navigator and create a new target:&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://dl.dropboxusercontent.com/u/76613492/tumblr/images/UsingSwiftFrameworksFromObjectiveC/CreateTarget.png&#34; alt=&#34;CreateNewTarget&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;and name it &lt;code&gt;ExampleSwiftFramework&lt;/code&gt;:&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://dl.dropboxusercontent.com/u/76613492/tumblr/images/UsingSwiftFrameworksFromObjectiveC/TargetDetails.png&#34; alt=&#34;DetailsNewTarget&#34; /&gt;&lt;/p&gt;
+
+&lt;h3 id=&#34;step-2-make-the-tests-logical&#34;&gt;Step 2 - make the tests logical&lt;/h3&gt;
+
+&lt;p&gt;The idea of Logical Unit Tests is less widely used in the Xcode community, but you can still make sure that your framework tests execute only against your framework code without depending on the application code (no application instance, no app delegate, no views, etc). Even though Apple does not seem to distinguish anymore between application unit tests and logic unit tests, the latter is what we want here: your tests working only with the Swift code in your framework. For this to work you need to make sure that the &lt;code&gt;Host Application&lt;/code&gt; seeting for the &lt;code&gt;ExampleSwiftFrameworkTests&lt;/code&gt; is set to &lt;code&gt;None&lt;/code&gt;:&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://dl.dropboxusercontent.com/u/76613492/tumblr/images/UsingSwiftFrameworksFromObjectiveC/HostApplicationNone.png&#34; alt=&#34;HostApplicationNone&#34; /&gt;&lt;/p&gt;
+
+&lt;blockquote&gt;
+&lt;p&gt;Logic unit tests cannot be run on the device. They may only run in the simulator.&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;h3 id=&#34;step-3-add-example-framework-class&#34;&gt;Step 3 - add example framework class&lt;/h3&gt;
+
+&lt;p&gt;Now inside our example framework, add an example swift class:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;import Foundation
+
+class ExampleSwiftFrameworkClass {
+
+    let message: String
+
+    init(withHelloMessage message: String) {
+        self.message = message
+    }
+
+    func sayHello() -&amp;gt; String {
+        return self.message
+    }
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;The tests for this class can be found in the &lt;code&gt;ExampleSwiftFrameworkTests.swift&lt;/code&gt; file in the &lt;code&gt;ExampleSwiftFrameworkTests&lt;/code&gt; target.&lt;/p&gt;
+
+&lt;h3 id=&#34;step-4-referring-to-the-swift-framework-from-the-main-application-target&#34;&gt;Step 4 - referring to the Swift framework from the main application target&lt;/h3&gt;
+
+&lt;p&gt;Now, let&amp;rsquo;s try to reference the &lt;code&gt;ExampleSwiftFrameworkClass&lt;/code&gt; from our main application target - which does not contain any Objective-C code.&lt;/p&gt;
+
+&lt;p&gt;We will be modifying the &lt;code&gt;viewDidLoad&lt;/code&gt; method of the &lt;code&gt;ViewController&lt;/code&gt; class from the main application target. You will quickly realise that Xcode code completion does not work for our class - in this case it right - our class is not visible yet in the main application target.&lt;/p&gt;
+
+&lt;p&gt;To make our class visible you need to import the module it comes from. Add the following line somewhere on the top of your &lt;code&gt;ViewController.m&lt;/code&gt; file:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;@import ExampleSwiftFramework;
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;You may realise that the Xcode&amp;rsquo;s completion already recognized the module, but the our &lt;code&gt;ExampleSwiftFrameworkClass&lt;/code&gt; remains invisible to Xcode. To fix this, we need to do two things:&lt;/p&gt;
+
+&lt;ol&gt;
+&lt;li&gt;Mark your Swift framework class with &lt;code&gt;@objc&lt;/code&gt; annotation, and make it inheritting from &lt;code&gt;NSObject&lt;/code&gt; (if you do not, compiler will tell you that you can&amp;rsquo;t use &lt;code&gt;@objc&lt;/code&gt; annotation otherwise).&lt;/li&gt;
+&lt;li&gt;Make sure your class, the constructor, and the method you want to access from another target are &lt;code&gt;public&lt;/code&gt;. The default visibility is &lt;code&gt;internal&lt;/code&gt; which means your class and all its methods are accessible to any other class from the same target. But our framework and our main application are from different targets - that&amp;rsquo;s why we need to use &lt;code&gt;public&lt;/code&gt; for access control.&lt;/li&gt;
+&lt;/ol&gt;
+
+&lt;p&gt;After the modifications, our &lt;code&gt;ExampleSwiftFrameworkClass&lt;/code&gt; should look like this:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;@objc
+public class ExampleSwiftFrameworkClass : NSObject {
+
+    let message: String
+
+    public init(withHelloMessage message: String) {
+        self.message = message
+    }
+
+    public func sayHello() -&amp;gt; String {
+        return self.message
+    }
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;If you try to run the app or the application tests (not framework tests) you may be surprised seeing that the app crashes with the following log output:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;dyld: Library not loaded: @rpath/libswiftCore.dylib
+  Referenced from:    /Users/usename/Library/Developer/Xcode/DerivedData/UsingSwiftFrameworksFromObjectiveC-befsyfovlmeizgeypzhxolfxbaco/Build/Products/Debug-iphonesimulator/ExampleSwiftFramework.framework/ExampleSwiftFramework
+Reason: image not found
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;Xcode is quite intelligent in fixing most of the stuff for us (we will discuss this still in more details below), but there are somethings we have to take care for ourselves.&lt;/p&gt;
+
+&lt;h3 id=&#34;step-5-fixing-the-missing-reference-to-libswiftcore-dylib&#34;&gt;Step 5 - Fixing the missing reference to &lt;code&gt;libswiftCore.dylib&lt;/code&gt;&lt;/h3&gt;
+
+&lt;blockquote&gt;
+&lt;p&gt;If you are building an app that does not use Swift but embeds content such as a framework that does, Xcode will not include these libraries in your app. As a result, your app will crash upon launching&amp;hellip;&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;p&gt;The text quoted above comes from the &lt;a href=&#34;https://developer.apple.com/library/ios/qa/qa1881/_index.html&#34;&gt;Technical Q&amp;amp;A QA1881
+Embedding Content with Swift in Objective-C&lt;/a&gt;. As resultion it instructs to set &lt;code&gt;Embedded Content Contains Swift Code&lt;/code&gt; build setting to &lt;code&gt;YES&lt;/code&gt; for the target that does not include Swift code itself but depends on a framework that does use Swift. Additionally, it recommends setting the &lt;code&gt;Embedded Content Contains Swift Code&lt;/code&gt; to &lt;code&gt;NO&lt;/code&gt; for the dependent framework target so that we do not get multiple copies of Swift libraries in the app.&lt;/p&gt;
+
+&lt;p&gt;In our example therefore, the only target where we need to set &lt;code&gt;Embedded Content Contains Swift Code&lt;/code&gt; to &lt;code&gt;YES&lt;/code&gt; is the main application target &lt;code&gt;UsingSwiftFrameworksFromObjectiveC&lt;/code&gt;:&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://dl.dropboxusercontent.com/u/76613492/tumblr/images/UsingSwiftFrameworksFromObjectiveC/EmbeddedContent.png&#34; alt=&#34;EmbeddedContentContainsSwiftCode&#34; /&gt;&lt;/p&gt;
+
+&lt;h3 id=&#34;other-settings&#34;&gt;Other settings&lt;/h3&gt;
+
+&lt;p&gt;We mentioned already that Xcode takes care for pretty mych everything. In some cases, however, especially when you deal with a legacy project, it may turn out handy to know what else may require our attention. We summarize the important points below:&lt;/p&gt;
+
+&lt;ol&gt;
+&lt;li&gt;&lt;p&gt;Main application target - &lt;code&gt;UsingSwiftFrameworksFromObjectiveC&lt;/code&gt;. We have to make sure that target depends on the framework, the framework is included in the &lt;code&gt;Link Binary With Libraries&lt;/code&gt; build phase, and that the &lt;code&gt;Embed Frameworks&lt;/code&gt; build phase contains the framework with the &lt;code&gt;Destination&lt;/code&gt; set to &lt;code&gt;Frameworks&lt;/code&gt;:&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://dl.dropboxusercontent.com/u/76613492/tumblr/images/UsingSwiftFrameworksFromObjectiveC/MainAppTarget.png&#34; alt=&#34;MainApplicationTargetSettings&#34; /&gt;&lt;/p&gt;&lt;/li&gt;
+
+&lt;li&gt;&lt;p&gt;The framework - &lt;code&gt;ExampleSwiftFramework&lt;/code&gt; target. In our case we do not want it to depend on the main application target &lt;code&gt;UsingSwiftFrameworksFromObjectiveC&lt;/code&gt;:&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://dl.dropboxusercontent.com/u/76613492/tumblr/images/UsingSwiftFrameworksFromObjectiveC/ExampleSwiftFramework.png&#34; alt=&#34;ExampleSwiftFrameworkTargetSettings&#34; /&gt;&lt;/p&gt;&lt;/li&gt;
+
+&lt;li&gt;&lt;p&gt;&lt;code&gt;ExampleSwiftFrameworkTests&lt;/code&gt; target. It depends on &lt;code&gt;ExampleSwiftFramework&lt;/code&gt; only and includes &lt;code&gt;ExampleSwiftFramework&lt;/code&gt; in the &lt;code&gt;Link Binary With Libraries&lt;/code&gt; build phase:&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://dl.dropboxusercontent.com/u/76613492/tumblr/images/UsingSwiftFrameworksFromObjectiveC/ExampleSwiftFrameworkTests.png&#34; alt=&#34;ExampleSwiftFrameworkTestsTargetSettings&#34; /&gt;&lt;/p&gt;&lt;/li&gt;
+&lt;/ol&gt;
+
+&lt;h3 id=&#34;additional-references&#34;&gt;Additional references&lt;/h3&gt;
+
+&lt;ol&gt;
+&lt;li&gt;&lt;a href=&#34;https://pewpewthespells.com/blog/swift_and_objc.html&#34;&gt;Technical Q&amp;amp;A QA1881 v2 - Embedding Content with Swift in Objective-C&lt;/a&gt;&lt;br /&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&#34;https://developer.apple.com/library/prerelease/ios/documentation/Swift/Conceptual/BuildingCocoaApps/MixandMatch.html&#34;&gt;Swift and Objective-C in the Same Project&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&#34;http://www.raywenderlich.com/65964/create-a-framework-for-ios&#34;&gt;How to Create a Framework for iOS&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&#34;https://medium.com/@PyBaig/build-your-own-cocoa-touch-frameworks-in-swift-d4ea3d1f9ca3#.aveyhytxy&#34;&gt;Build your own Cocoa Touch Frameworks, in pure Swift&lt;/a&gt;&lt;/li&gt;
+&lt;/ol&gt;
+</description>
+    </item>
+    
+    <item>
+      <title>module exports vs exports in nodejs</title>
+      <link>https://marcinczenko.github.io/post/module-exports-vs-exports-in-node-js/</link>
+      <pubDate>Thu, 19 Nov 2015 00:00:00 +0000</pubDate>
+      
+      <guid>https://marcinczenko.github.io/post/module-exports-vs-exports-in-node-js/</guid>
+      <description>
+
+&lt;blockquote&gt;
+&lt;p&gt;This post is a summary of the differences between &lt;code&gt;module.exports&lt;/code&gt; and &lt;code&gt;exports&lt;/code&gt; in &lt;code&gt;Node.js&lt;/code&gt; described in the following note:
+ &lt;a href=&#34;http://www.hacksparrow.com/node-js-exports-vs-module-exports.html&#34;&gt;Node.js Module – exports vs module.exports&lt;/a&gt;.&lt;/p&gt;
+
+&lt;p&gt;The article comes from 2011 but then updated in 2014. You may want to take a look at the comments, they add valuable insights. I especially value the one from &lt;strong&gt;Adam Ahmed&lt;/strong&gt;, and I decided to include it below for my own convenience.&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;h3 id=&#34;module-exports-vs-exports&#34;&gt;&lt;code&gt;module.exports&lt;/code&gt; vs &lt;code&gt;exports&lt;/code&gt;&lt;/h3&gt;
+
+&lt;p&gt;It might help clarify things to show how they are initialized. Essentially before your code runs, there is a code that runs like this:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;var module = {...}; // stuff
+var exports = module.exports = {};
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;So both variables initially point to the same empty Object, but of course can be reassigned to any other value instead. So if you reassign the &lt;code&gt;exports&lt;/code&gt; variable, it doesn’t affect &lt;code&gt;module.exports&lt;/code&gt;. Similarly, if you reassign &lt;code&gt;module.exports&lt;/code&gt;, it no longer affects &lt;code&gt;exports&lt;/code&gt;. They will be pointing at different values.
+What makes &lt;code&gt;module.exports&lt;/code&gt; the “real deal” is that when someone &lt;code&gt;require()&lt;/code&gt;s your module, &lt;code&gt;require&lt;/code&gt; essential does this:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;function require(moduleName) {
+    var module = getModule(moduleName);
+    return module.exports;
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;It might also help to say that &lt;code&gt;module&lt;/code&gt; is the real deal more than &lt;code&gt;module.exports&lt;/code&gt; is. Take this code for example:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;var truth = module;
+var notExports = module.exports;
+truth.exports = { genre: ‘Rock’ };
+notExports.genre = ‘Blues&#39;;
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;‘Rock’ will be exported. Since &lt;code&gt;truth&lt;/code&gt; is pointing to &lt;code&gt;module&lt;/code&gt;, it can make lasting changes to the exports that &lt;code&gt;notExports&lt;/code&gt; can’t.&lt;/p&gt;
 </description>
     </item>
     

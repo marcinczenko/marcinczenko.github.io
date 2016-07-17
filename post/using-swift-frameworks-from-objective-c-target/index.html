@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <meta http-equiv="content-type" content="text/html; charset=utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
+<title> using swift frameworks from objective-c target &middot; marcin.czenko </title>
+
+
+<link rel="stylesheet" href="https://marcinczenko.github.io/css/slim.css">
+<link rel="stylesheet" href="https://marcinczenko.github.io/css/highlight.min.css">
+<link href='https://fonts.googleapis.com/css?family=Source+Sans+Pro:400,700|Source+Code+Pro' rel='stylesheet' type='text/css'>
+
+<link rel="apple-touch-icon-precomposed" sizes="144x144" href="https://marcinczenko.github.io/apple-touch-icon-144-precomposed.png">
+<link rel="shortcut icon" href="https://marcinczenko.github.io/favicon.ico">
+
+
+<link href="" rel="alternate" type="application/rss+xml" title="marcin.czenko" />
+
+</head>
+
+<body>
+  <div class="container">
+    <div class="header">
+  <h1 class="site-title"><a href="https://marcinczenko.github.io/">marcin.czenko</a></h1>
+  <p class="site-tagline">engineering blog</p>
+  <div class="nav">
+    <a class="nav-btn" href="#">
+      <span class="ci ci-burger"></span>
+    </a>
+    <ul class="nav-list">
+       
+	  <li class="spacer">&ac;</li>
+
+      <li><a href="https://github.com/marcinczenko">Github</a></li> 
+      <li><a href="https://twitter.com/mczenko">Twitter</a></li> 
+    </ul>
+  </div>
+</div>
+    <div class="content">
+      <div class="posts">
+        <div class="post">
+          <h2 class="post-title"><a href="https://marcinczenko.github.io/post/using-swift-frameworks-from-objective-c-target/">using swift frameworks from objective-c target</a></h2>
+          <span class="post-date">Jan 17, 2016 </span>
+          <div class="post-content">
+            
+
+<blockquote>
+<p>The code in this post was tested with Xcode Version 7.2 (7C68).</p>
+
+<p>The accompanying source code can be found at <a href="https://github.com/marcinczenko/UsingSwiftFrameworksFromObjectiveC">github.com/marcinczenko/UsingSwiftFrameworksFromObjectiveC</a></p>
+</blockquote>
+
+<p>When working with legacy iOS products it may happens that you need to integrate with main application target that
+contains only Objective-C code. You want to take advantage of Swift but you want this nicely separated from the old
+legacy code. Creating a framework that will contain your Swift code is the answer.</p>
+
+<blockquote>
+<p>There is no something like a Swift framework. A framework can include both Objective-C and Swift code. In this short post we focus on a framework containing only Swift code.</p>
+
+<p>If you want to share your Swift code, a framework is necessary. You can&rsquo;t just use a static library as they do not support Swift code.</p>
+</blockquote>
+
+<p>The following steps describe the whole process of creating a framework and adding it to an Objective-C-only target.</p>
+
+<blockquote>
+<p>If you want to follow with the source code from <a href="https://github.com/marcinczenko/UsingSwiftFrameworksFromObjectiveC">github.com/marcinczenko/UsingSwiftFrameworksFromObjectiveC</a> please clone the repository and checkout the very first commit with comment <code>Initial commit.</code> (commit 73e8dde) and then follow the steps. The last commit corresponds to the final state.</p>
+</blockquote>
+
+<h3 id="step-1-add-a-taget">Step 1 - add a taget</h3>
+
+<p>Select your project in the Project Navigator and create a new target:</p>
+
+<p><img src="https://dl.dropboxusercontent.com/u/76613492/tumblr/images/UsingSwiftFrameworksFromObjectiveC/CreateTarget.png" alt="CreateNewTarget" /></p>
+
+<p>and name it <code>ExampleSwiftFramework</code>:</p>
+
+<p><img src="https://dl.dropboxusercontent.com/u/76613492/tumblr/images/UsingSwiftFrameworksFromObjectiveC/TargetDetails.png" alt="DetailsNewTarget" /></p>
+
+<h3 id="step-2-make-the-tests-logical">Step 2 - make the tests logical</h3>
+
+<p>The idea of Logical Unit Tests is less widely used in the Xcode community, but you can still make sure that your framework tests execute only against your framework code without depending on the application code (no application instance, no app delegate, no views, etc). Even though Apple does not seem to distinguish anymore between application unit tests and logic unit tests, the latter is what we want here: your tests working only with the Swift code in your framework. For this to work you need to make sure that the <code>Host Application</code> seeting for the <code>ExampleSwiftFrameworkTests</code> is set to <code>None</code>:</p>
+
+<p><img src="https://dl.dropboxusercontent.com/u/76613492/tumblr/images/UsingSwiftFrameworksFromObjectiveC/HostApplicationNone.png" alt="HostApplicationNone" /></p>
+
+<blockquote>
+<p>Logic unit tests cannot be run on the device. They may only run in the simulator.</p>
+</blockquote>
+
+<h3 id="step-3-add-example-framework-class">Step 3 - add example framework class</h3>
+
+<p>Now inside our example framework, add an example swift class:</p>
+
+<pre><code>import Foundation
+
+class ExampleSwiftFrameworkClass {
+
+    let message: String
+
+    init(withHelloMessage message: String) {
+        self.message = message
+    }
+
+    func sayHello() -&gt; String {
+        return self.message
+    }
+}
+</code></pre>
+
+<p>The tests for this class can be found in the <code>ExampleSwiftFrameworkTests.swift</code> file in the <code>ExampleSwiftFrameworkTests</code> target.</p>
+
+<h3 id="step-4-referring-to-the-swift-framework-from-the-main-application-target">Step 4 - referring to the Swift framework from the main application target</h3>
+
+<p>Now, let&rsquo;s try to reference the <code>ExampleSwiftFrameworkClass</code> from our main application target - which does not contain any Objective-C code.</p>
+
+<p>We will be modifying the <code>viewDidLoad</code> method of the <code>ViewController</code> class from the main application target. You will quickly realise that Xcode code completion does not work for our class - in this case it right - our class is not visible yet in the main application target.</p>
+
+<p>To make our class visible you need to import the module it comes from. Add the following line somewhere on the top of your <code>ViewController.m</code> file:</p>
+
+<pre><code>@import ExampleSwiftFramework;
+</code></pre>
+
+<p>You may realise that the Xcode&rsquo;s completion already recognized the module, but the our <code>ExampleSwiftFrameworkClass</code> remains invisible to Xcode. To fix this, we need to do two things:</p>
+
+<ol>
+<li>Mark your Swift framework class with <code>@objc</code> annotation, and make it inheritting from <code>NSObject</code> (if you do not, compiler will tell you that you can&rsquo;t use <code>@objc</code> annotation otherwise).</li>
+<li>Make sure your class, the constructor, and the method you want to access from another target are <code>public</code>. The default visibility is <code>internal</code> which means your class and all its methods are accessible to any other class from the same target. But our framework and our main application are from different targets - that&rsquo;s why we need to use <code>public</code> for access control.</li>
+</ol>
+
+<p>After the modifications, our <code>ExampleSwiftFrameworkClass</code> should look like this:</p>
+
+<pre><code>@objc
+public class ExampleSwiftFrameworkClass : NSObject {
+
+    let message: String
+
+    public init(withHelloMessage message: String) {
+        self.message = message
+    }
+
+    public func sayHello() -&gt; String {
+        return self.message
+    }
+}
+</code></pre>
+
+<p>If you try to run the app or the application tests (not framework tests) you may be surprised seeing that the app crashes with the following log output:</p>
+
+<pre><code>dyld: Library not loaded: @rpath/libswiftCore.dylib
+  Referenced from:    /Users/usename/Library/Developer/Xcode/DerivedData/UsingSwiftFrameworksFromObjectiveC-befsyfovlmeizgeypzhxolfxbaco/Build/Products/Debug-iphonesimulator/ExampleSwiftFramework.framework/ExampleSwiftFramework
+Reason: image not found
+</code></pre>
+
+<p>Xcode is quite intelligent in fixing most of the stuff for us (we will discuss this still in more details below), but there are somethings we have to take care for ourselves.</p>
+
+<h3 id="step-5-fixing-the-missing-reference-to-libswiftcore-dylib">Step 5 - Fixing the missing reference to <code>libswiftCore.dylib</code></h3>
+
+<blockquote>
+<p>If you are building an app that does not use Swift but embeds content such as a framework that does, Xcode will not include these libraries in your app. As a result, your app will crash upon launching&hellip;</p>
+</blockquote>
+
+<p>The text quoted above comes from the <a href="https://developer.apple.com/library/ios/qa/qa1881/_index.html">Technical Q&amp;A QA1881
+Embedding Content with Swift in Objective-C</a>. As resultion it instructs to set <code>Embedded Content Contains Swift Code</code> build setting to <code>YES</code> for the target that does not include Swift code itself but depends on a framework that does use Swift. Additionally, it recommends setting the <code>Embedded Content Contains Swift Code</code> to <code>NO</code> for the dependent framework target so that we do not get multiple copies of Swift libraries in the app.</p>
+
+<p>In our example therefore, the only target where we need to set <code>Embedded Content Contains Swift Code</code> to <code>YES</code> is the main application target <code>UsingSwiftFrameworksFromObjectiveC</code>:</p>
+
+<p><img src="https://dl.dropboxusercontent.com/u/76613492/tumblr/images/UsingSwiftFrameworksFromObjectiveC/EmbeddedContent.png" alt="EmbeddedContentContainsSwiftCode" /></p>
+
+<h3 id="other-settings">Other settings</h3>
+
+<p>We mentioned already that Xcode takes care for pretty mych everything. In some cases, however, especially when you deal with a legacy project, it may turn out handy to know what else may require our attention. We summarize the important points below:</p>
+
+<ol>
+<li><p>Main application target - <code>UsingSwiftFrameworksFromObjectiveC</code>. We have to make sure that target depends on the framework, the framework is included in the <code>Link Binary With Libraries</code> build phase, and that the <code>Embed Frameworks</code> build phase contains the framework with the <code>Destination</code> set to <code>Frameworks</code>:</p>
+
+<p><img src="https://dl.dropboxusercontent.com/u/76613492/tumblr/images/UsingSwiftFrameworksFromObjectiveC/MainAppTarget.png" alt="MainApplicationTargetSettings" /></p></li>
+
+<li><p>The framework - <code>ExampleSwiftFramework</code> target. In our case we do not want it to depend on the main application target <code>UsingSwiftFrameworksFromObjectiveC</code>:</p>
+
+<p><img src="https://dl.dropboxusercontent.com/u/76613492/tumblr/images/UsingSwiftFrameworksFromObjectiveC/ExampleSwiftFramework.png" alt="ExampleSwiftFrameworkTargetSettings" /></p></li>
+
+<li><p><code>ExampleSwiftFrameworkTests</code> target. It depends on <code>ExampleSwiftFramework</code> only and includes <code>ExampleSwiftFramework</code> in the <code>Link Binary With Libraries</code> build phase:</p>
+
+<p><img src="https://dl.dropboxusercontent.com/u/76613492/tumblr/images/UsingSwiftFrameworksFromObjectiveC/ExampleSwiftFrameworkTests.png" alt="ExampleSwiftFrameworkTestsTargetSettings" /></p></li>
+</ol>
+
+<h3 id="additional-references">Additional references</h3>
+
+<ol>
+<li><a href="https://pewpewthespells.com/blog/swift_and_objc.html">Technical Q&amp;A QA1881 v2 - Embedding Content with Swift in Objective-C</a><br /></li>
+<li><a href="https://developer.apple.com/library/prerelease/ios/documentation/Swift/Conceptual/BuildingCocoaApps/MixandMatch.html">Swift and Objective-C in the Same Project</a></li>
+<li><a href="http://www.raywenderlich.com/65964/create-a-framework-for-ios">How to Create a Framework for iOS</a></li>
+<li><a href="https://medium.com/@PyBaig/build-your-own-cocoa-touch-frameworks-in-swift-d4ea3d1f9ca3#.aveyhytxy">Build your own Cocoa Touch Frameworks, in pure Swift</a></li>
+</ol>
+
+          </div>
+        </div>
+        <div class="pagination">
+          <a class="btn previous " href="https://marcinczenko.github.io/post/string-conversions-in-swift/"> Prev</a>  
+          <a class="btn next " href="https://marcinczenko.github.io/post/module-exports-vs-exports-in-node-js/"> Next</a> 
+        </div>
+      </div>
+    </div>
+    
+    <div id="disqus_thread"></div>
+    <script>
+      var disqus_config = function () {
+        this.page.url = "https://marcinczenko.github.io/post/using-swift-frameworks-from-objective-c-target/";
+        
+      };
+      (function() {
+        var d = document, s = d.createElement('script');
+        s.src = '//marcinczenko.disqus.com/embed.js';
+        s.setAttribute('data-timestamp', +new Date());
+        (d.head || d.body).appendChild(s);
+      })();
+    </script>
+    <noscript>Please enable JavaScript to view the <a href="https://disqus.com/?ref_noscript" rel="nofollow">comments powered by Disqus.</a></noscript>
+    
+    <div class="footer">
+  
+  <p>Copyright Marcin Czenko 2015-2016. Powered by Hugo and the (modified) Slim theme.</p>
+  
+</div>
+
+  </div>
+  <script src="https://marcinczenko.github.io/js/slim.js"></script>
+  <script src="https://marcinczenko.github.io/js/highlight.min.js"></script>
+  <script>
+    hljs.initHighlightingOnLoad();
+  </script>
+  
+</body>
+
+</html>

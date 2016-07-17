@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <meta http-equiv="content-type" content="text/html; charset=utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
+<title> string conversions in swift &middot; marcin.czenko </title>
+
+
+<link rel="stylesheet" href="https://marcinczenko.github.io/css/slim.css">
+<link rel="stylesheet" href="https://marcinczenko.github.io/css/highlight.min.css">
+<link href='https://fonts.googleapis.com/css?family=Source+Sans+Pro:400,700|Source+Code+Pro' rel='stylesheet' type='text/css'>
+
+<link rel="apple-touch-icon-precomposed" sizes="144x144" href="https://marcinczenko.github.io/apple-touch-icon-144-precomposed.png">
+<link rel="shortcut icon" href="https://marcinczenko.github.io/favicon.ico">
+
+
+<link href="" rel="alternate" type="application/rss+xml" title="marcin.czenko" />
+
+</head>
+
+<body>
+  <div class="container">
+    <div class="header">
+  <h1 class="site-title"><a href="https://marcinczenko.github.io/">marcin.czenko</a></h1>
+  <p class="site-tagline">engineering blog</p>
+  <div class="nav">
+    <a class="nav-btn" href="#">
+      <span class="ci ci-burger"></span>
+    </a>
+    <ul class="nav-list">
+       
+	  <li class="spacer">&ac;</li>
+
+      <li><a href="https://github.com/marcinczenko">Github</a></li> 
+      <li><a href="https://twitter.com/mczenko">Twitter</a></li> 
+    </ul>
+  </div>
+</div>
+    <div class="content">
+      <div class="posts">
+        <div class="post">
+          <h2 class="post-title"><a href="https://marcinczenko.github.io/post/string-conversions-in-swift/">string conversions in swift</a></h2>
+          <span class="post-date">May 20, 2016 </span>
+          <div class="post-content">
+            <p>Say you have your own custom class:</p>
+
+<pre><code>class MyClass {
+  let counter: Int
+
+  init(withCounter: Int) {
+          self.counter = withCounter
+  }
+}
+</code></pre>
+
+<p>Now, you want it to be convertible to <code>String</code>. One way of doing it is to create an extension to the <code>String</code> class itself like this:</p>
+
+<pre><code>extension String {
+  init(_ myClass: MyClass) {
+    self = &quot;{ counter: \(myClass.counter) }&quot; 
+  }
+}
+</code></pre>
+
+<p>This will let you do:</p>
+
+<pre><code>let str = String(MyClass(withCounter:25)) 
+// str is &quot;{ counter: 25 }&quot;
+</code></pre>
+
+<p>This may seem to be sufficient in many cases, but it does not seem to be truly the <em>Swift</em> way. I realised this when working with testing framework (Nimble) and I realised that having just <code>String</code> extension does not make Nimble to produce correct string descriptions of my class instances when testing. In particular, and you can test it easily in the playground, this will not work as expected:</p>
+
+<pre><code>let str2 = &quot;\(MyClass(withCounter:25))&quot; 
+// str2 is &quot;MyClass&quot;
+</code></pre>
+
+<p>For the string interpolation to work as expected in this case, you would rather have to do this:</p>
+
+<pre><code>let str3 = &quot;\(String(MyClass(withCounter:25)))&quot; 
+// str3 is &quot;{ counter: 25 }&quot;
+</code></pre>
+
+<p>This is not how you want to use string interpolation though.</p>
+
+<p>This <a href="http://vperi.com/2014/06/04/textual-representation-for-classes-in-swift/">blog</a> describes how this is supposed to be done correctly in Swift 1 (still with lots of pain), and <a href="http://vperi.com/2015/09/19/textual-representation-for-classes-swift/">here</a> is the updated version for Swift 2.</p>
+
+<p>To summarise, this is how you can extend <code>MyClass</code>:</p>
+
+<pre><code>class MyClass: CustomStringConvertible {
+  let counter: Int
+
+  var description: String {
+      return &quot;{ counter: \(self.counter) }&quot;
+    }
+
+    init(withCounter: Int) {
+      self.counter = withCounter
+  }
+}
+</code></pre>
+
+<p>Now, the string interpolation should work as expected.
+You can download the gist playground file <a href="https://gist.github.com/marcinczenko/f7d6dd3fbeb02dc1245d">here</a>.</p>
+
+          </div>
+        </div>
+        <div class="pagination">
+          <a class="btn previous " href="https://marcinczenko.github.io/post/around-type-erasure-in-swift/"> Prev</a>  
+          <a class="btn next " href="https://marcinczenko.github.io/post/using-swift-frameworks-from-objective-c-target/"> Next</a> 
+        </div>
+      </div>
+    </div>
+    
+    <div id="disqus_thread"></div>
+    <script>
+      var disqus_config = function () {
+        this.page.url = "https://marcinczenko.github.io/post/string-conversions-in-swift/";
+        
+      };
+      (function() {
+        var d = document, s = d.createElement('script');
+        s.src = '//marcinczenko.disqus.com/embed.js';
+        s.setAttribute('data-timestamp', +new Date());
+        (d.head || d.body).appendChild(s);
+      })();
+    </script>
+    <noscript>Please enable JavaScript to view the <a href="https://disqus.com/?ref_noscript" rel="nofollow">comments powered by Disqus.</a></noscript>
+    
+    <div class="footer">
+  
+  <p>Copyright Marcin Czenko 2015-2016. Powered by Hugo and the (modified) Slim theme.</p>
+  
+</div>
+
+  </div>
+  <script src="https://marcinczenko.github.io/js/slim.js"></script>
+  <script src="https://marcinczenko.github.io/js/highlight.min.js"></script>
+  <script>
+    hljs.initHighlightingOnLoad();
+  </script>
+  
+</body>
+
+</html>

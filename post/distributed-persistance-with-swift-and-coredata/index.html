@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <meta http-equiv="content-type" content="text/html; charset=utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
+<title> distributed persistance with swift and coredata &middot; marcin.czenko </title>
+
+
+<link rel="stylesheet" href="https://marcinczenko.github.io/css/slim.css">
+<link rel="stylesheet" href="https://marcinczenko.github.io/css/highlight.min.css">
+<link href='https://fonts.googleapis.com/css?family=Source+Sans+Pro:400,700|Source+Code+Pro' rel='stylesheet' type='text/css'>
+
+<link rel="apple-touch-icon-precomposed" sizes="144x144" href="https://marcinczenko.github.io/apple-touch-icon-144-precomposed.png">
+<link rel="shortcut icon" href="https://marcinczenko.github.io/favicon.ico">
+
+
+<link href="" rel="alternate" type="application/rss+xml" title="marcin.czenko" />
+
+</head>
+
+<body>
+  <div class="container">
+    <div class="header">
+  <h1 class="site-title"><a href="https://marcinczenko.github.io/">marcin.czenko</a></h1>
+  <p class="site-tagline">engineering blog</p>
+  <div class="nav">
+    <a class="nav-btn" href="#">
+      <span class="ci ci-burger"></span>
+    </a>
+    <ul class="nav-list">
+       
+	  <li class="spacer">&ac;</li>
+
+      <li><a href="https://github.com/marcinczenko">Github</a></li> 
+      <li><a href="https://twitter.com/mczenko">Twitter</a></li> 
+    </ul>
+  </div>
+</div>
+    <div class="content">
+      <div class="posts">
+        <div class="post">
+          <h2 class="post-title"><a href="https://marcinczenko.github.io/post/distributed-persistance-with-swift-and-coredata/">distributed persistance with swift and coredata</a></h2>
+          <span class="post-date">Jun 30, 2016 </span>
+          <div class="post-content">
+            
+
+<p>Component-based architectures give us high level of isolation and independence of the underlying components, but at the same time exibits potential risk of duplication. How would a component-based architecture work for iOS apps, especially when persistance is the key. Let&rsquo;s experiment&hellip;</p>
+
+<p>Let me create a framerwork in which I will have seprate components. I want my components to be possibly independent from each other, but at the same time I want to limit duplication. And trying to push the idea to the extreme, if a component needs to store anything in CoreData (we will use CoreData in this example, but you can easily abstract it away and use different storage options), I let the component to have its own model and its own sqlite file - in other words rather than sharing one CoreData stack among all the components, each component maintains its own instance of the CoreData stack. I am not sure how robust this architecture would be, and how well will it scale in terms of perfomance, but the possibility of throwing a component away at any moment without worrying about other component is very appealing and may be a good option in some applications.</p>
+
+<p>Every type that is supposed to be stored in CoreData has its domain level equivalent. CoreData&rsquo;s managed objects, actually everything that&rsquo;s related to CoreData can only occur in the CoreData stack  itself and in a wrapper that encapsulates low-level CoreData operations and translates between managed objects and the corresponding domain types.</p>
+
+<p>Above the CoreData wrapper, there is a <em>data store</em> that provides high level persistance interface and enforces data integrity.</p>
+
+<p>The CoreData wrapper and the data store provide a uniform set of operations that can be reused among components. Each component will have its own instances of the CoreData stack, the CoreData wrapper, and a data store, but I want them all to share the same source code.</p>
+
+<h3 id="domain-objects">Domain objects</h3>
+
+<p>All our domain objects have to conform to the following protocol:</p>
+
+<pre><code>protocol EPQuantity {
+    associatedtype EPQuantityType
+    func getValue() -&gt; EQQuantityType
+}
+</code></pre>
+
+<p>The <code>associatedtype</code> is a placeholder for the actuall type that will be provided by the type conforming to the protocol. Our protocol requires that a type conforming to it must have a method <code>getValue</code> returing a value of a type that is specific to the given domain object. This makes the protocol a good candidate for many types as long they can provide a value.</p>
+
+<p>Now, lets take two example domain level value types conforming to the <code>EPQuantity</code> protocol:</p>
+
+<pre><code>struct EPAcceleration: EPQuantity, CustomStringConvertible {
+    let acceleration: Double
+
+    var description: String {
+        return &quot;EPAcceleration(acceleration: \(acceleration))&quot;
+    }
+
+    func getValue() -&gt; Double {
+        return acceleration
+    }
+}
+
+struct EPSpeed: EPQuantity, CustomStringConvertible {
+    let speed: Int
+
+    var description: String {
+        return &quot;EPSpeed(speed: \(speed))&quot;
+    }
+
+    func getValue() -&gt; Int {
+        return speed
+    }
+}
+</code></pre>
+
+<p>What is important to see is that both types represents quantities of different types: we have an <code>Int</code> for the speed, but <code>Double</code> for acceleration.</p>
+
+<h3 id="data-store">Data store</h3>
+
+<p>Now we want to be able to store the domain objects in a data store. We may be tempted to start with the following implementation:</p>
+
+<pre><code>class EPDataStore {
+    func store(item: EPQuantity)
+    func getAll() -&gt; EPQuantity
+}
+</code></pre>
+
+<p>The compiler, however, will give us the following compile-time error: <em>Protocol &lsquo;EPQuantity&rsquo; can only be used as a generic constraint because it has Self or associated type requirements</em>.</p>
+
+<p>To fix this problem we can either do:</p>
+
+<pre><code>class EPDataStore {
+    func store&lt;T: EPQuantity&gt;(item: T) {
+
+    }
+
+    func getAll&lt;T: EPQuantity&gt;() -&gt; [T]? {
+        return nil
+    }
+}
+</code></pre>
+
+<p>or just:</p>
+
+<pre><code>class EPDataStore&lt;T: EPQuantity&gt; {
+
+    func store(item: T) {
+
+    }
+
+    func getAll() -&gt; [T]? {
+        return nil
+    }
+}
+</code></pre>
+
+<p>The problem we may have with this implementation is that we may want to be slightly more specific about which types should be allowed to enter the store. For instance, <code>EPSpeed</code> and <code>EPAcceleration</code> being domain equivalent of some managed objects, will ultimately need to match the corresponding types of the attributes in the manged objects. We can immediatelly think of <code>Int</code>, <code>Double</code>, <code>NSTimeInterval</code>, <code>String</code>, <code>NSDate</code>, <code>NSNumber</code> and perhapes a couple of more options. For now, to support <code>EPSpeed</code> and <code>EPAcceleration</code>, we only need to support <code>Int</code> and <code>Double</code>. How can we make the type constraint in <code>EPDataStore</code> more specific?</p>
+
+<p>One way is to create another protocol and require that an instance of (a type implementing)<code>EPQuantity</code> can be stored in our store if and only if the type returned by its <code>getValue</code> requirement conforms to this new protocol. Let&rsquo;s call this protocol <code>EPPersistable</code>:</p>
+
+<pre><code>protocol EPPersistable {}
+</code></pre>
+
+<p>Now, let&rsquo;s update <code>EPDataStore</code> with a more specific type constraint:</p>
+
+<pre><code>class EPDataStore&lt;T: EPQuantity where T.EPQuantityValueType: EPPersistable&gt; {
+
+    func store(item: T) {
+
+    }
+
+    func getAll() -&gt; [T]? {
+        return nil
+    }
+}
+</code></pre>
+
+<p>Now, if you try to create an instance of <code>DataStore</code> for <code>EPSpeed</code>:</p>
+
+<pre><code>let dataStore = EPDataStore&lt;EPSpeed&gt;()
+</code></pre>
+
+<p>the compliler will complain with <em>Type &lsquo;Int&rsquo; does not conform to protocol &lsquo;EPPersistable&rsquo;</em>. We can make the error go away by using an <em>extenssion</em> to add protocol conformance:</p>
+
+<pre><code>extension Int: EPPersistable {}
+</code></pre>
+
+<p>and if we want to persist instances of <code>EPAcceleration</code>, we would also need:</p>
+
+<pre><code>extension Double: EPPersistable {}
+</code></pre>
+
+<p>That&rsquo;s nice, but let&rsquo;s get back to our isolated components. Each is holding its own CoreData stack, a CoreData wrapper to translate between managed objects and domain objects, and a DataStore to handle data integrity or any other required logic. As a <code>DataStore</code> dependency, we want the CoreData wrapper to provide a mapping between objects conforming to the <code>EPQuantity</code> protocol and the corresponding managed objects that will land in our CoreData storage. As an example, <code>EPSpeed</code> would be matched by the following managed object:</p>
+
+<pre><code>@objc(EPSpeedCoreData)
+class EPSpeedCoreData: NSManagedObject {
+
+    // Insert code here to add functionality to your managed object subclass
+
+}
+
+extension EPSpeedCoreData {
+    @NSManaged var speed: Int32
+}
+</code></pre>
+
+<p>Then, in order to be able to handle different managed objects through a common interface, we could add the following protocol:</p>
+
+<pre><code>protocol EPCoreDataQuantity {
+    associatedtype EPCoreDataQuantityValueType
+    func getValue() -&gt; EPCoreDataQuantityValueType
+    func setValue(value: EPCoreDataQuantityValueType)
+}
+
+extension EPSpeedCoreData:EPCoreDataQuantity {
+    func getValue() -&gt; Int {
+        return Int(speed)
+    }
+
+    func setValue(value: Int) {
+        speed = Int32(value)
+    }
+}
+</code></pre>
+
+<p>And finally, the skeleton of our universal CoreData wrapper could be defined by the following set of requirements:</p>
+
+<pre><code>protocol EPPersistance {
+    associatedtype EPQuantityType
+    func write(item: EPQuantityType)
+    func read() -&gt; [EPQuantityType]?
+}
+</code></pre>
+
+<p>and fullfilled by the following type:</p>
+
+<pre><code>class EPCoreDataWrapper&lt;T: EPCoreDataQuantity, U: EPQuantity where T.EPCoreDataQuantityValueType: EPPersistable, U.EPQuantityValueType: EPPersistable&gt;: EPPersistance {
+
+    func write(item: U) {
+
+    }
+
+    func read() -&gt; [U]? {
+        return nil
+    }
+}
+</code></pre>
+
+<p>And obviously, our <code>EPDataStore</code> needs an instance of compatible CoreData wrapper, so obviously one could be tempted to try something like this:</p>
+
+<pre><code>class EPDataStore&lt;T: EPQuantity where T.EPQuantityValueType: EPPersistable&gt; {
+
+    let persistance: EPPersistance
+
+    init(persistance: EPPersistance) {
+        self.persistance = persistance
+    }
+
+    func store(item: T) {
+        persistance.write(item)    
+    }
+
+    func getAll() -&gt; [T]? {
+        return persistance.read()
+    }
+}
+</code></pre>
+
+<p>But we will get the familiar error - this time regarding <code>EPPersistance</code>: <em>Protocol &lsquo;EPPersiatance&rsquo; can only be used as a generic constraint because it has Self or associated type requirements</em>.</p>
+
+<p>The solution to this problem is commonly known as <em>Type Erasure</em>, a technique that I also describe shortly in my other post <a href="https://marcinczenko.github.io/post/around-type-erasure-in-swift/">Around Type Erasure in Swift</a>. We cannot refer to <code>EPPersistance</code> directly because it has an associated type. We need to hide this fact from the compiler by wrapping up the EPPersistance inside another type that will not exbit the limitation that <code>EPPersistance</code> has. To achieve that, we create a type that wraps an instance conforming to the <code>EPPersistance</code> protocol:</p>
+
+<pre><code>class EPAnyPersistance&lt;T: EPQuantity where T.EPQuantityValueType: EPPersistable&gt; : EPPersistance {
+
+    let _write: T -&gt; ()
+    let _read: () -&gt; [T]?
+
+    init&lt;BaseType: EPPersistance where BaseType.EPQuantityType == T&gt;(base: BaseType) {
+        _write = base.write
+        _read = base.read
+    }
+
+    func write(item: T) {
+        _write(item)
+    }
+
+    func read() -&gt; [T]? {
+        return _read()
+    }
+}
+</code></pre>
+
+<p>Now, it is safe to add a reference to the persistance object to our data store:</p>
+
+<pre><code>class EPDataStore&lt;T: EPQuantity where T.EPQuantityValueType: EPPersistable&gt; {
+
+    let persistance: EPAnyPersistance&lt;T&gt;
+
+    init(persistance: EPAnyPersistance&lt;T&gt;) {
+      self.persistance = persistance
+    }
+
+    func store(item: T) {
+        persistance.write(item)
+    }
+
+    func getAll() -&gt; [T]? {
+        return persistance.read()
+    }
+}
+</code></pre>
+
+<p>We can create an instance of <code>EPDataStore</code> for <code>EPSpeed</code> type as follows:</p>
+
+<pre><code>let dataStoreForSpeed = EPDataStore&lt;EPSpeed&gt;(persistance: EPAnyPersistance(base: EPCoreDataWrapper&lt;EPSpeedCoreData, EPSpeed&gt;()))
+
+dataStoreForSpeed.store(EPSpeed(speed: 125))
+dataStoreForSpeed.getAll()
+</code></pre>
+
+<p>Try it out in the playground:  <a href="https://gist.github.com/marcinczenko/8c9bf9289d9f3a2eade4946b1e67af6e#file-experimentingwithpersistanceinswift-playground">ExperimentingWithPersistanceInSwift.playground</a>.</p>
+
+          </div>
+        </div>
+        <div class="pagination">
+          <a class="btn previous " href="https://marcinczenko.github.io/post/welcome/"> Prev</a>  
+          <a class="btn next " href="https://marcinczenko.github.io/post/around-type-erasure-in-swift/"> Next</a> 
+        </div>
+      </div>
+    </div>
+    
+    <div id="disqus_thread"></div>
+    <script>
+      var disqus_config = function () {
+        this.page.url = "https://marcinczenko.github.io/post/distributed-persistance-with-swift-and-coredata/";
+        
+      };
+      (function() {
+        var d = document, s = d.createElement('script');
+        s.src = '//marcinczenko.disqus.com/embed.js';
+        s.setAttribute('data-timestamp', +new Date());
+        (d.head || d.body).appendChild(s);
+      })();
+    </script>
+    <noscript>Please enable JavaScript to view the <a href="https://disqus.com/?ref_noscript" rel="nofollow">comments powered by Disqus.</a></noscript>
+    
+    <div class="footer">
+  
+  <p>Copyright Marcin Czenko 2015-2016. Powered by Hugo and the (modified) Slim theme.</p>
+  
+</div>
+
+  </div>
+  <script src="https://marcinczenko.github.io/js/slim.js"></script>
+  <script src="https://marcinczenko.github.io/js/highlight.min.js"></script>
+  <script>
+    hljs.initHighlightingOnLoad();
+  </script>
+  
+</body>
+
+</html>
