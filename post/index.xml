@@ -5,8 +5,48 @@
     <link>https://marcinczenko.github.io/post/</link>
     <description>Recent content in Posts on marcin.czenko</description>
     <generator>Hugo -- gohugo.io</generator>
-    <lastBuildDate>Sat, 16 Jul 2016 17:48:05 +0200</lastBuildDate>
+    <lastBuildDate>Tue, 26 Jul 2016 14:47:01 +0200</lastBuildDate>
     <atom:link href="https://marcinczenko.github.io/post/index.xml" rel="self" type="application/rss+xml" />
+    
+    <item>
+      <title>presentViewController from didSelectRowAtIndexPath very slow</title>
+      <link>https://marcinczenko.github.io/post/presentViewController-from-didSelectRowAtIndexPath-very-slow/</link>
+      <pubDate>Tue, 26 Jul 2016 14:47:01 +0200</pubDate>
+      
+      <guid>https://marcinczenko.github.io/post/presentViewController-from-didSelectRowAtIndexPath-very-slow/</guid>
+      <description>&lt;p&gt;And intersting behaviour can be observed when presenting a view controller from
+&lt;code&gt;tableView:didSelectRowAtIndexPath:&lt;/code&gt;. It may take long seconds before the new view will be presented. This problem does not seem to be new and is already reported on &lt;a href=&#34;http://openradar.appspot.com/19563577&#34;&gt;openradar&lt;/a&gt; for &lt;em&gt;iOS8.1&lt;/em&gt;, but comments and my own tests indicate that the problem persists even in &lt;em&gt;iOS9.3.3&lt;/em&gt; (build &lt;code&gt;13G34&lt;/code&gt;).&lt;/p&gt;
+
+&lt;p&gt;Two workarounds are to be known:&lt;/p&gt;
+
+&lt;ol&gt;
+&lt;li&gt;Wrap the presenting of a controller in a &lt;code&gt;dispatch_async&lt;/code&gt; call on the main queue.&lt;/li&gt;
+&lt;li&gt;Use &lt;code&gt;[self.tableView deselectRowAtIndexPath:indexPath animated:NO];&lt;/code&gt; before presenting the view controller.&lt;/li&gt;
+&lt;/ol&gt;
+
+&lt;p&gt;Below is an example with &lt;code&gt;dispatch_async&lt;/code&gt;:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;dispatch_async(dispatch_get_main_queue(), ^{
+        UIAlertController* alert = [UIAlertController 
+               alertControllerWithTitle:@&amp;quot;Message&amp;quot;
+                                message:@&amp;quot;I have shown up immediately :)&amp;quot;
+                         preferredStyle:UIAlertControllerStyleAlert];
+
+        UIAlertAction* defaultAction = [UIAlertAction actionWithTitle:@&amp;quot;OK&amp;quot;
+                                  style:UIAlertActionStyleDefault
+                                handler:^(UIAlertAction * action) {}];
+
+        [alert addAction:defaultAction];
+        [self.navigationController presentViewController:alert animated:YES completion:nil];
+        alert.view.tintColor = [UIColor darkGrayColor];
+    });
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;blockquote&gt;
+&lt;p&gt;BTW: in the code above you see changing the alert&amp;rsquo;s button text color via the &lt;code&gt;tintColor&lt;/code&gt; property. It has to happen after an alert controller is presented or the setting of the caller will have no impact.&lt;/p&gt;
+&lt;/blockquote&gt;
+</description>
+    </item>
     
     <item>
       <title>welcome</title>

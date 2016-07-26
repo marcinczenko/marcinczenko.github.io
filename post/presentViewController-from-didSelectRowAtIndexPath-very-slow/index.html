@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <meta http-equiv="content-type" content="text/html; charset=utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
+<title> presentViewController from didSelectRowAtIndexPath very slow &middot; marcin.czenko </title>
+
+
+<link rel="stylesheet" href="https://marcinczenko.github.io/css/slim.css">
+<link rel="stylesheet" href="https://marcinczenko.github.io/css/highlight.min.css">
+<link href='https://fonts.googleapis.com/css?family=Source+Sans+Pro:400,700|Source+Code+Pro' rel='stylesheet' type='text/css'>
+
+<link rel="apple-touch-icon-precomposed" sizes="144x144" href="https://marcinczenko.github.io/apple-touch-icon-144-precomposed.png">
+<link rel="shortcut icon" href="https://marcinczenko.github.io/favicon.ico">
+
+
+<link href="" rel="alternate" type="application/rss+xml" title="marcin.czenko" />
+
+</head>
+
+<body>
+  <div class="container">
+    <div class="header">
+  <h1 class="site-title"><a href="https://marcinczenko.github.io/">marcin.czenko</a></h1>
+  <p class="site-tagline">engineering blog</p>
+  <div class="nav">
+    <a class="nav-btn" href="#">
+      <span class="ci ci-burger"></span>
+    </a>
+    <ul class="nav-list">
+       
+	  <li class="spacer">&ac;</li>
+
+      <li><a href="https://github.com/marcinczenko">Github</a></li> 
+      <li><a href="https://twitter.com/mczenko">Twitter</a></li> 
+    </ul>
+  </div>
+</div>
+    <div class="content">
+      <div class="posts">
+        <div class="post">
+          <h2 class="post-title"><a href="https://marcinczenko.github.io/post/presentViewController-from-didSelectRowAtIndexPath-very-slow/">presentViewController from didSelectRowAtIndexPath very slow</a></h2>
+          <span class="post-date">Jul 26, 2016 </span>
+          <div class="post-content">
+            <p>And intersting behaviour can be observed when presenting a view controller from
+<code>tableView:didSelectRowAtIndexPath:</code>. It may take long seconds before the new view will be presented. This problem does not seem to be new and is already reported on <a href="http://openradar.appspot.com/19563577">openradar</a> for <em>iOS8.1</em>, but comments and my own tests indicate that the problem persists even in <em>iOS9.3.3</em> (build <code>13G34</code>).</p>
+
+<p>Two workarounds are to be known:</p>
+
+<ol>
+<li>Wrap the presenting of a controller in a <code>dispatch_async</code> call on the main queue.</li>
+<li>Use <code>[self.tableView deselectRowAtIndexPath:indexPath animated:NO];</code> before presenting the view controller.</li>
+</ol>
+
+<p>Below is an example with <code>dispatch_async</code>:</p>
+
+<pre><code>dispatch_async(dispatch_get_main_queue(), ^{
+        UIAlertController* alert = [UIAlertController 
+               alertControllerWithTitle:@&quot;Message&quot;
+                                message:@&quot;I have shown up immediately :)&quot;
+                         preferredStyle:UIAlertControllerStyleAlert];
+
+        UIAlertAction* defaultAction = [UIAlertAction actionWithTitle:@&quot;OK&quot;
+                                  style:UIAlertActionStyleDefault
+                                handler:^(UIAlertAction * action) {}];
+
+        [alert addAction:defaultAction];
+        [self.navigationController presentViewController:alert animated:YES completion:nil];
+        alert.view.tintColor = [UIColor darkGrayColor];
+    });
+</code></pre>
+
+<blockquote>
+<p>BTW: in the code above you see changing the alert&rsquo;s button text color via the <code>tintColor</code> property. It has to happen after an alert controller is presented or the setting of the caller will have no impact.</p>
+</blockquote>
+
+          </div>
+        </div>
+        <div class="pagination"> 
+          <a class="btn next " href="https://marcinczenko.github.io/post/welcome/"> Next</a> 
+        </div>
+      </div>
+    </div>
+    
+    <div id="disqus_thread"></div>
+    <script>
+      var disqus_config = function () {
+        this.page.url = "https://marcinczenko.github.io/post/presentViewController-from-didSelectRowAtIndexPath-very-slow/";
+        
+      };
+      (function() {
+        var d = document, s = d.createElement('script');
+        s.src = '//marcinczenko.disqus.com/embed.js';
+        s.setAttribute('data-timestamp', +new Date());
+        (d.head || d.body).appendChild(s);
+      })();
+    </script>
+    <noscript>Please enable JavaScript to view the <a href="https://disqus.com/?ref_noscript" rel="nofollow">comments powered by Disqus.</a></noscript>
+    
+    <div class="footer">
+  
+  <p>Copyright Marcin Czenko 2015-2016. Powered by Hugo and the (modified) Slim theme.</p>
+  
+</div>
+
+  </div>
+  <script src="https://marcinczenko.github.io/js/slim.js"></script>
+  <script src="https://marcinczenko.github.io/js/highlight.min.js"></script>
+  <script>
+    hljs.initHighlightingOnLoad();
+  </script>
+  
+</body>
+
+</html>
