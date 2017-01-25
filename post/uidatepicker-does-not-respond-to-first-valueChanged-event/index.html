@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <meta http-equiv="content-type" content="text/html; charset=utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
+<title> UIDatePicker does not reposnd to the first valueChanged event &middot; marcin.czenko </title>
+
+
+<link rel="stylesheet" href="https://marcinczenko.github.io/css/slim.css">
+<link rel="stylesheet" href="https://marcinczenko.github.io/css/highlight.min.css">
+<link href='https://fonts.googleapis.com/css?family=Source+Sans+Pro:400,700|Source+Code+Pro' rel='stylesheet' type='text/css'>
+
+<link rel="apple-touch-icon-precomposed" sizes="144x144" href="https://marcinczenko.github.io/apple-touch-icon-144-precomposed.png">
+<link rel="shortcut icon" href="https://marcinczenko.github.io/favicon.ico">
+
+
+<link href="" rel="alternate" type="application/rss+xml" title="marcin.czenko" />
+
+</head>
+
+<body>
+  <div class="container">
+    <div class="header">
+  <h1 class="site-title"><a href="https://marcinczenko.github.io/">marcin.czenko</a></h1>
+  <p class="site-tagline">engineering blog</p>
+  <div class="nav">
+    <a class="nav-btn" href="#">
+      <span class="ci ci-burger"></span>
+    </a>
+    <ul class="nav-list">
+       
+	  <li class="spacer">&ac;</li>
+
+      <li><a href="https://github.com/marcinczenko">Github</a></li> 
+      <li><a href="https://twitter.com/mczenko">Twitter</a></li> 
+    </ul>
+  </div>
+</div>
+    <div class="content">
+      <div class="posts">
+        <div class="post">
+          <h2 class="post-title"><a href="https://marcinczenko.github.io/post/uidatepicker-does-not-respond-to-first-valueChanged-event/">UIDatePicker does not reposnd to the first valueChanged event</a></h2>
+          <span class="post-date">Jan 25, 2017 </span>
+          <div class="post-content">
+            <p>Time ago I found another problem that somehow resembles this one. It was about presenting a view controller from within the <code>tableView:didSelectRowAtIndexPath:</code> and the problem was that it was taking lots of time for the new controller to actually show up. One of the workarounds turned out to be using <code>dispatch_async</code> on the main queue. The same worked for me in this case.</p>
+
+<p>In my <code>viewDidLoad</code>, I asynchronously dispatched the picker setup code on the main queue and, in my case, it started to respond to the <code>valueChanged</code> event even on the first pick:</p>
+
+<pre><code>DispatchQueue.main.async {
+    self.pickerView.datePickerMode = .countDownTimer
+    self.pickerView.minuteInterval = 5
+    self.pickerView.countDownDuration = 15
+}
+</code></pre>
+
+<p>See also:
+- <a href="https://marcinczenko.github.io/post/presentViewController-from-didSelectRowAtIndexPath-very-slow/">presentViewController from didSelectRowAtIndexPath very slow</a></p>
+
+          </div>
+        </div>
+        <div class="pagination"> 
+          <a class="btn next " href="https://marcinczenko.github.io/post/presentViewController-from-didSelectRowAtIndexPath-very-slow/"> Next</a> 
+        </div>
+      </div>
+    </div>
+    
+    <div id="disqus_thread"></div>
+    <script>
+      var disqus_config = function () {
+        this.page.url = "https://marcinczenko.github.io/post/uidatepicker-does-not-respond-to-first-valueChanged-event/";
+        
+      };
+      (function() {
+        var d = document, s = d.createElement('script');
+        s.src = '//marcinczenko.disqus.com/embed.js';
+        s.setAttribute('data-timestamp', +new Date());
+        (d.head || d.body).appendChild(s);
+      })();
+    </script>
+    <noscript>Please enable JavaScript to view the <a href="https://disqus.com/?ref_noscript" rel="nofollow">comments powered by Disqus.</a></noscript>
+    
+    <div class="footer">
+  
+  <p>Copyright Marcin Czenko 2015-2016. Powered by Hugo and the (modified) Slim theme.</p>
+  
+</div>
+
+  </div>
+  <script src="https://marcinczenko.github.io/js/slim.js"></script>
+  <script src="https://marcinczenko.github.io/js/highlight.min.js"></script>
+  <script>
+    hljs.initHighlightingOnLoad();
+  </script>
+  
+</body>
+
+</html>
