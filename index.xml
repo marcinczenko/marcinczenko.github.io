@@ -16,8 +16,6 @@
       <guid>https://marcinczenko.github.io/post/aurelia-redux/</guid>
       <description>
 
-&lt;h2 id=&#34;aurelia-redux&#34;&gt;aurelia-redux&lt;/h2&gt;
-
 &lt;p&gt;This is a demo project showing how to integrate redux and rxjs with aurelia in a &lt;a href=&#34;https://github.com/reactjs/react-redux&#34;&gt;react-redux&lt;/a&gt; way.&lt;/p&gt;
 
 &lt;h3 id=&#34;how-to-run&#34;&gt;How to run&lt;/h3&gt;
