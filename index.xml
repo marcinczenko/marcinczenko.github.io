@@ -5,8 +5,397 @@
     <link>https://marcinczenko.github.io/index.xml</link>
     <description>Recent content on marcin.czenko</description>
     <generator>Hugo -- gohugo.io</generator>
-    <lastBuildDate>Wed, 25 Jan 2017 18:11:28 +0100</lastBuildDate>
+    <lastBuildDate>Thu, 23 Mar 2017 00:00:00 +0000</lastBuildDate>
     <atom:link href="https://marcinczenko.github.io/index.xml" rel="self" type="application/rss+xml" />
+    
+    <item>
+      <title>aurelia-redux</title>
+      <link>https://marcinczenko.github.io/post/aurelia-redux/</link>
+      <pubDate>Thu, 23 Mar 2017 00:00:00 +0000</pubDate>
+      
+      <guid>https://marcinczenko.github.io/post/aurelia-redux/</guid>
+      <description>
+
+&lt;h2 id=&#34;aurelia-redux&#34;&gt;aurelia-redux&lt;/h2&gt;
+
+&lt;p&gt;This is a demo project showing how to integrate redux and rxjs with aurelia in a &lt;a href=&#34;https://github.com/reactjs/react-redux&#34;&gt;react-redux&lt;/a&gt; way.&lt;/p&gt;
+
+&lt;h3 id=&#34;how-to-run&#34;&gt;How to run&lt;/h3&gt;
+
+&lt;p&gt;After cloning run:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;$ au run --watch
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;h3 id=&#34;introduction&#34;&gt;Introduction&lt;/h3&gt;
+
+&lt;p&gt;One of the patterns that helps keeping our apps clear and maintainable as they grow is the Data-Down, Actions-Up pattern. It puts clear constraints on the data flow between parent and child components: the data that a child component needs to render its view (or to do its job in general) are provided by its parent and the only way to change the data is via so called actions. This is in contrast to two-way data bindings, where data changes that affect the model are immediately propagated to the corresponding template, and conversely, any changes made in the UI are promptly reflected in the underlying model. Magic! This may seem convenient for unexperienced developer at first, but when employed in larger scale and more complex applications, two-way data binding can often become more of a headache than a blessing ( finding out where to mutate your data, tracing the source of mutated data. etc). Even in smaller applications, the Data-Down, Actions-Up brings important benefits - it makes the code easy to read and reason about, which drastically lowers the probability of make a mistake.
+The Data-Down, Actions-Up pattern is well known to (originates from?) the Ember and React communities, but more and more developers are appreciating its clean and easy to follow principles.&lt;/p&gt;
+
+&lt;h3 id=&#34;redux&#34;&gt;Redux&lt;/h3&gt;
+
+&lt;p&gt;We could realise data-down, actions-up pattern using combination of Aurelia&amp;rsquo;s native one-way data bindings and EventAggregator Events, but to achieve a true uni-directional data-flow we will use Redux. From the Redux documentation:&lt;/p&gt;
+
+&lt;p&gt;Redux is a predictable state container for JavaScript apps.
+(&amp;hellip;)
+It helps you write applications that behave consistently, run in different environments (client, server, and native), and are easy to test. On top of that, it provides a great developer experience, such as live code editing combined with a time traveling debugger.
+You can use Redux together with React, or with any other view library.&lt;/p&gt;
+
+&lt;p&gt;Redux achieves its goals by observing the three fundamental principles:&lt;/p&gt;
+
+&lt;ol&gt;
+&lt;li&gt;&lt;a href=&#34;http://redux.js.org/docs/introduction/ThreePrinciples.html#single-source-of-truth&#34;&gt;Single source of truth&lt;/a&gt;. &lt;br /&gt;
+The state of your whole application is stored in an object tree within a single store.&lt;/li&gt;
+&lt;li&gt;&lt;a href=&#34;http://redux.js.org/docs/introduction/ThreePrinciples.html#state-is-read-only&#34;&gt;State is read-only&lt;/a&gt;. &lt;br /&gt;
+The only way to change the state is to emit an action, an object describing what happened.&lt;/li&gt;
+&lt;li&gt;&lt;a href=&#34;http://redux.js.org/docs/introduction/ThreePrinciples.html#changes-are-made-with-pure-functions&#34;&gt;Changes are made with pure functions&lt;/a&gt;. &lt;br /&gt;
+To specify how the state tree is transformed by actions, you write pure reducers.&lt;/li&gt;
+&lt;/ol&gt;
+
+&lt;p&gt;Learn Redux from its author Dan Abramov in a video course consisting of 30 videos: &lt;a href=&#34;https://egghead.io/series/getting-started-with-redux&#34;&gt;Getting Started with Redux&lt;/a&gt;.
+Redux integrates well with most of the frameworks, but there is a healthy pattern around that helps making it smooth.&lt;/p&gt;
+
+&lt;h3 id=&#34;application-state-container-components-and-presentational-components&#34;&gt;Application State, Container Components, and Presentational Components&lt;/h3&gt;
+
+&lt;p&gt;I will use a short paragraph from the &lt;a href=&#34;http://www.ember-redux.com/ddau/&#34;&gt;ember-redux&lt;/a&gt; community:&lt;/p&gt;
+
+&lt;blockquote&gt;
+&lt;p&gt;The core concept is that we should separate the responsibility of components into 2 groups. The first group is given the label Container Components and they act like the “backend of the frontend” in a way. They will be “connected” to the datasource and delegate to other components for any html that is rendered on the page. The second group is given the label Presentational Components and as you can probability guess the only job they have is to render html given some object/data.&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;p&gt;The data source is the application state - the one and only one source of truth for the whole app.
+The picture below illustrates the idea:&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://dl.dropboxusercontent.com/u/76613492/blogs/hugo/images/DataDown-ActionsUp.png&#34; alt=&#34;data-down, actions-up&#34; /&gt;&lt;/p&gt;
+
+&lt;h3 id=&#34;using-redux-with-aurelia&#34;&gt;Using Redux with Aurelia&lt;/h3&gt;
+
+&lt;p&gt;Our way of integrating Redux with Aurelia is inspired by &lt;a href=&#34;https://github.com/reactjs/react-redux&#34;&gt;react-redux&lt;/a&gt; - the official React bindings for Redux. react-redux takes the burden of creating the container components away using their &lt;a href=&#34;https://github.com/reactjs/react-redux/blob/master/docs/api.md#connectmapstatetoprops-mapdispatchtoprops-mergeprops-options&#34;&gt;connect&lt;/a&gt; function, here we will try to do something similar - in Aurelia world having React on the horizon.&lt;/p&gt;
+
+&lt;p&gt;We need to provide three things:&lt;/p&gt;
+
+&lt;ol&gt;
+&lt;li&gt;Passing a subset of an application state (possibly mapped to some other object) from parent to child component. We call this subset &lt;em&gt;props&lt;/em&gt;.&lt;/li&gt;
+&lt;li&gt;Making the props dynamic - if the relevant subset of the state changes, so should the related props.&lt;/li&gt;
+&lt;li&gt;Dispatching actions up from child to parent (or presentational component to a container component) also happens via functions passed from parent to the child via &lt;em&gt;props&lt;/em&gt;. We need to facilitate that as well.&lt;/li&gt;
+&lt;/ol&gt;
+
+&lt;h3 id=&#34;container-components&#34;&gt;Container components&lt;/h3&gt;
+
+&lt;p&gt;As depicted in the picture above, container components are the only one that have access to the application state. A pure container component would have the following structure:&lt;/p&gt;
+
+&lt;p&gt;&lt;strong&gt;TodoListContainer.js&lt;/strong&gt;&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;import {inject} from &#39;aurelia-framework&#39;;
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;import {AureliaProps} from &amp;lsquo;services/props/AureliaProps&amp;rsquo;;&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;class TodoListContainerProps extends AureliaProps {
+  mapStateToProps(state) {
+    return {
+      todos: state.todos
+    };
+  }
+
+  mapDispatchToProps() {
+    return {
+      todoToggle: (id) =&amp;gt; {
+         this.applicationStateCoordinator.dispatch(this.actionCreators.todoToggle(id));
+      },
+      todoAdd: (id, text) =&amp;gt; {
+        this.applicationStateCoordinator.dispatch(this.actionCreators.todoAdd(id, text));
+      }
+    };
+  }
+}
+
+@inject(TodoListContainerProps)
+export class TodoListContainer {
+  constructor(props) {
+    this.props = props;
+  }
+
+  detached() {
+    this.props.unsubscribe();
+  }
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;&lt;strong&gt;TodoListContainer.html&lt;/strong&gt;&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;&amp;lt;template&amp;gt;
+  &amp;lt;require from=&amp;quot;./TodoList&amp;quot;&amp;gt;&amp;lt;/require&amp;gt;
+  &amp;lt;todo-list props.bind=&amp;quot;props&amp;quot;&amp;gt;&amp;lt;/todo-list&amp;gt;
+&amp;lt;/template&amp;gt;
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;We see that the container component simply wraps the presentations component &lt;code&gt;todo-list&lt;/code&gt; and provides it with props via one-way data binding. The &lt;code&gt;todo-list&lt;/code&gt; presentation component does not have to do much to access the props from its parent:&lt;/p&gt;
+
+&lt;p&gt;&lt;strong&gt;ToDoList.js&lt;/strong&gt;&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;export class TodoList {
+  @bindable props;
+
+  @observable todoText;
+
+  constructor() {
+    this.styles = styles;
+    this.buttonDisabled = &#39;disabled&#39;;
+  }
+
+  propsChanged() {
+    console.log(&#39;propsChanged=&#39;, this.props);
+  }
+
+  todoTextChanged() {
+    if (this.todoText.trim().length === 0) {
+      this.buttonDisabled = &#39;disabled&#39;;
+    } else {
+      this.buttonDisabled = &#39;&#39;;
+    }
+  }
+
+  addTodo() {
+    this.props.todoAdd(this.props.todos.length, this.todoText);
+    this.todoText = &#39;&#39;;
+  }
+}
+
+const styles = {
+  container: {
+    margin: &#39;10px&#39;,
+    padding: 0,
+    width: &#39;600px&#39;
+  },
+
+  todoList: {
+    display: &#39;flex&#39;,
+    &#39;flex-flow&#39;: &#39;column nowrap&#39;
+  },
+
+  inputGroup: {
+    display: &#39;flex&#39;,
+    margin: &#39;10px 0&#39;
+  },
+
+  button: {
+    &#39;margin-left&#39;: &#39;15px&#39;,
+    &#39;padding&#39;: &#39;10px&#39;
+  }
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;&lt;strong&gt;ToDoList.html&lt;/strong&gt;&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;&amp;lt;template&amp;gt;
+  &amp;lt;require from=&amp;quot;components/todo/Todo&amp;quot;&amp;gt;&amp;lt;/require&amp;gt;
+
+  &amp;lt;div style.bind=&amp;quot;styles.container&amp;quot;&amp;gt;
+    &amp;lt;h2&amp;gt;Todo list:&amp;lt;/h2&amp;gt;
+    &amp;lt;div if.bind=&amp;quot;!props.todos || props.todos.length === 0&amp;quot;&amp;gt;
+      Please add some todos and have fun!
+    &amp;lt;/div&amp;gt;
+    &amp;lt;div style.bind=&amp;quot;styles.todoList&amp;quot; repeat.for=&amp;quot;todo of props.todos&amp;quot;&amp;gt;
+      &amp;lt;todo id.bind=&amp;quot;todo.id&amp;quot;
+            text.bind=&amp;quot;todo.text&amp;quot; 
+            completed.bind=&amp;quot;todo.completed&amp;quot;
+            toggle.bind=&amp;quot;props.todoToggle&amp;quot;&amp;gt;
+      &amp;lt;/todo&amp;gt;
+    &amp;lt;/div&amp;gt;
+    &amp;lt;form submit.trigger=&amp;quot;addTodo()&amp;quot;&amp;gt;
+      &amp;lt;div style.bind=&amp;quot;styles.inputGroup&amp;quot;&amp;gt;
+        &amp;lt;input type=&amp;quot;text&amp;quot; value.bind=&amp;quot;todoText&amp;quot;&amp;gt;
+        &amp;lt;button style.bind=&amp;quot;styles.button&amp;quot; disabled.bind=&amp;quot;buttonDisabled&amp;quot; type=&amp;quot;submit&amp;quot;&amp;gt;Add Todo&amp;lt;/button&amp;gt;
+      &amp;lt;/div&amp;gt;
+    &amp;lt;/form&amp;gt;
+  &amp;lt;/div&amp;gt;
+&amp;lt;/template&amp;gt;
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;We see that the relevant data is passed down to the children &lt;code&gt;todo&lt;/code&gt; components together with actionable &lt;code&gt;todoToggle&lt;/code&gt; function. Additionally, the &lt;code&gt;TodoList&lt;/code&gt; component provides a form with an edit field and a button that allow us to add more todo items.
+Important to note here, that we are not trying to be dogmatic about two-way bindings - they are usually fine in form controls where data need to be passed from the view to the view model. This is exactly what we do with the &lt;code&gt;todoText&lt;/code&gt; that is bound to the form&amp;rsquo;s input value in the &lt;code&gt;TodoList&lt;/code&gt; component. Notice though that this two-way binding stops at the component level and does not propagate further. We also do not use two way bindings with custom components: two-way binding is only ok between view controls and view model.
+Finally, we have our &lt;code&gt;todo&lt;/code&gt; component:&lt;/p&gt;
+
+&lt;p&gt;&lt;strong&gt;ToDo.js&lt;/strong&gt;&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;import { bindable } from &#39;aurelia-framework&#39;;
+
+export class Todo {
+  @bindable id;
+  @bindable text;
+  @bindable completed;
+  @bindable toggle;
+
+  constructor() {
+    this.styles = styles;
+  }
+
+  toggleCompleted() {
+    this.toggle(this.id);
+  }
+
+  completedChanged() {
+    this.updateStyle();
+  }
+
+  updateStyle() {
+    if (this.completed) {
+      this.styles = {...styles, todo: {...styles.todoCompleted} };
+    } else {
+      this.styles = {...styles, todo: {...styles.todoNotCompleted} };
+    }
+  }
+}
+
+const styles = {
+  container: {
+    display: &#39;flex&#39;,
+    &#39;flex-flow&#39;: &#39;row nowrap&#39;,
+    &#39;align-items&#39;: &#39;center&#39;,
+    width: &#39;100%&#39;
+  },
+  buttonContainer: {
+    flex: 1,
+    display: &#39;block&#39;,
+    margin: &#39;0 10px&#39;
+  },
+  button: {
+    padding: &#39;15px&#39;
+  },
+  todoCompleted: {
+    flex: 1,
+    &#39;text-decoration&#39;: &#39;line-through&#39;
+  },
+  todoNotCompleted: {
+    flex: 1,
+    &#39;text-decoration&#39;: &#39;none&#39;
+  }
+};
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;&lt;strong&gt;ToDo.html&lt;/strong&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;template&gt;
+      &lt;div&gt;
+        &lt;p style.bind=&#34;styles.todo&#34;&gt;${this.text}&lt;/p&gt;
+        &lt;button click.delegate=&#34;toggleCompleted()&#34;&gt;Toggle Completed&lt;/button&gt;
+      &lt;/div&gt;
+    &lt;/template&gt;&lt;/p&gt;
+
+&lt;p&gt;When the user clicks on the &lt;em&gt;Toggle Completed&lt;/em&gt; button the action is triggered via the &lt;code&gt;toggle&lt;/code&gt; function that was provided from the parent. The &lt;code&gt;Todo&lt;/code&gt; item does not maintain its internal state - it is driven by the state changes on the parent. Thanks to this, &lt;code&gt;Todo&lt;/code&gt; is simple to reason about. In general, one-way data flow makes reasoning about the system easier and less error prone, even though it may give impression of more boilerplate code.&lt;/p&gt;
+
+&lt;h3 id=&#34;how-does-it-work&#34;&gt;How does it work?&lt;/h3&gt;
+
+&lt;p&gt;If you read the code above, you notice that there is no single mention of Redux. The container component - &lt;code&gt;TodoListContainer&lt;/code&gt; - is provided with convenient &lt;code&gt;props&lt;/code&gt; object (via native Aurelia dependency injection mechanism) that already contains only the subset of the actual application state:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;class TodoListContainerProps extends AureliaProps {
+  mapStateToProps(state) {
+    return {
+      todos: state.todos
+    };
+  }
+
+  mapDispatchToProps() {
+    return {
+      todoToggle: (id) =&amp;gt; {
+        this.dispatch(this.actionCreators.todoToggle(id));
+      },
+      todoAdd: (id, text) =&amp;gt; {
+        this.dispatch(this.actionCreators.todoAdd(id, text));
+      }
+    };
+  }
+}
+
+@inject(TodoListContainerProps)
+export class TodoListContainer {
+  constructor(props) {
+    this.props = props;
+  }
+
+  detached() {
+    this.props.unsubscribe();
+  }
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;In order to declare which part of the state our container component is interested in, all what is needed is a class with two required methods (inspired by &lt;a href=&#34;https://github.com/reactjs/react-redux&#34;&gt;react-redux&lt;/a&gt;): &lt;code&gt;mapStateToProps&lt;/code&gt; and &lt;code&gt;mapDispatchToProps&lt;/code&gt;. First represents the &lt;em&gt;data down&lt;/em&gt; pattern, the second &lt;em&gt;actions up&lt;/em&gt;. The &lt;em&gt;Props&lt;/em&gt; class (as we will call it from now on), extends the AureliaProps class where the magic happens:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;import {inject} from &#39;aurelia-framework&#39;;
+
+import {ApplicationStateCoordinator} from &#39;services/state-management/ApplicationStateCoordinator&#39;;
+import {ActionCreators} from &#39;application-state/ActionCreators&#39;;
+
+@inject(ApplicationStateCoordinator, ActionCreators)
+export class AureliaProps {
+  constructor(applicationStateCoordinator, actionCreators) {
+    this.applicationStateCoordinator = applicationStateCoordinator;
+    this.actionCreators = actionCreators;
+    this.observable = this.applicationStateCoordinator.observable((state) =&amp;gt; {
+        return this.mapStateToProps(state);
+    });
+    this.subscription = this.observable.subscribe((props) =&amp;gt; {
+      Object.assign(this, props);
+    });
+    Object.assign(this, this.mapDispatchToProps());
+  }
+
+  dispatch(action) {
+    this.applicationStateCoordinator.dispatch(action);
+  }
+
+  unsubscribe() {
+    this.subscription.unsubscribe();
+  }
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;The AureliaProps class does two things:
+1. It provides the &lt;code&gt;ApplicationStateCoordinator&lt;/code&gt; and &lt;code&gt;ActionCreators&lt;/code&gt; instances to the receiver. Thanks to this &lt;code&gt;TodoListContainerProps&lt;/code&gt; class can conveniently dispatch the actions. The actions themselves are conveniently created with &lt;code&gt;ActionCreators&lt;/code&gt; that hide the details of the internal action format.
+2. It makes props object dynamically changing every time the relevant part of the state changes. This is the job of the &lt;code&gt;ApplicationStateCoordinator&lt;/code&gt; that provides &lt;em&gt;rxjs&lt;/em&gt; observable that will fire everytime the selection of the state specified by the &lt;code&gt;mapStateToProps&lt;/code&gt; that we described above.&lt;/p&gt;
+
+&lt;p&gt;Below we present the code of the &lt;code&gt;ApplicationStateCoordinator&lt;/code&gt; class:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;import { createStore } from &#39;redux&#39;;
+import Rx from &#39;@reactivex/rxjs&#39;;
+
+import { applicationReducer } from &#39;application-state/Reducers&#39;;
+
+export class ApplicationStateCoordinator {
+
+  constructor() {
+    this.reduxStore = createStore(applicationReducer);
+  }
+
+  observable(select) {
+    return Rx.Observable.create((observer) =&amp;gt; {
+      let currentState;
+      let dispose = this.reduxStore.subscribe(() =&amp;gt; {
+        let nextState = select(this.reduxStore.getState());
+        if (nextState !== currentState) {
+          observer.next(nextState);
+        }
+      });
+      observer.next(select(this.reduxStore.getState()));
+      return dispose;
+    });
+  }
+
+  dispatch(action) {
+    this.reduxStore.dispatch(action);
+  }
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;The &lt;code&gt;observable&lt;/code&gt; method returns a function that will unsubscribe from following the (sub)state changes. We use it in the detached method of the container component:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;detached() {
+  this.props.unsubscribe();
+}
+&lt;/code&gt;&lt;/pre&gt;
+</description>
+    </item>
     
     <item>
       <title>UIDatePicker does not respond to the first valueChanged event</title>
