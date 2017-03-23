@@ -18,6 +18,10 @@
 
 &lt;p&gt;This is a demo project showing how to integrate redux and rxjs with aurelia in a &lt;a href=&#34;https://github.com/reactjs/react-redux&#34;&gt;react-redux&lt;/a&gt; way.&lt;/p&gt;
 
+&lt;blockquote&gt;
+&lt;p&gt;The complete source code can be find at &lt;a href=&#34;https://github.com/marcinczenko/aurelia-redux&#34;&gt;https://github.com/marcinczenko/aurelia-redux&lt;/a&gt;.&lt;/p&gt;
+&lt;/blockquote&gt;
+
 &lt;h3 id=&#34;how-to-run&#34;&gt;How to run&lt;/h3&gt;
 
 &lt;p&gt;After cloning run:&lt;/p&gt;
