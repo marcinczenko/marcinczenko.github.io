@@ -15,7 +15,7 @@
 <link rel="shortcut icon" href="https://marcinczenko.github.io/favicon.ico">
 
 
-<link href="" rel="alternate" type="application/rss+xml" title="marcin.czenko" />
+
 
 </head>
 
@@ -69,19 +69,19 @@ legacy code. Creating a framework that will contain your Swift code is the answe
 
 <h3 id="step-1-add-a-taget">Step 1 - add a taget</h3>
 
-<p>Select your project in the Project Navigator and create a new target:</p>
+<p>Select your project in the Project Navigator and create a new target hey:</p>
 
-<p><img src="https://dl.dropboxusercontent.com/u/76613492/tumblr/images/UsingSwiftFrameworksFromObjectiveC/CreateTarget.png" alt="CreateNewTarget" /></p>
+<p><img src="https://marcinczenko.github.io/img/using-swift-frameworks-from-objective-c-target/CreateTarget.png" alt="CreateNewTarget" /></p>
 
 <p>and name it <code>ExampleSwiftFramework</code>:</p>
 
-<p><img src="https://dl.dropboxusercontent.com/u/76613492/tumblr/images/UsingSwiftFrameworksFromObjectiveC/TargetDetails.png" alt="DetailsNewTarget" /></p>
+<p><img src="https://marcinczenko.github.io/img/using-swift-frameworks-from-objective-c-target/TargetDetails.png" alt="DetailsNewTarget" /></p>
 
 <h3 id="step-2-make-the-tests-logical">Step 2 - make the tests logical</h3>
 
 <p>The idea of Logical Unit Tests is less widely used in the Xcode community, but you can still make sure that your framework tests execute only against your framework code without depending on the application code (no application instance, no app delegate, no views, etc). Even though Apple does not seem to distinguish anymore between application unit tests and logic unit tests, the latter is what we want here: your tests working only with the Swift code in your framework. For this to work you need to make sure that the <code>Host Application</code> seeting for the <code>ExampleSwiftFrameworkTests</code> is set to <code>None</code>:</p>
 
-<p><img src="https://dl.dropboxusercontent.com/u/76613492/tumblr/images/UsingSwiftFrameworksFromObjectiveC/HostApplicationNone.png" alt="HostApplicationNone" /></p>
+<p><img src="https://marcinczenko.github.io/img/using-swift-frameworks-from-objective-c-target/HostApplicationNone.png" alt="HostApplicationNone" /></p>
 
 <blockquote>
 <p>Logic unit tests cannot be run on the device. They may only run in the simulator.</p>
@@ -164,7 +164,7 @@ Embedding Content with Swift in Objective-C</a>. As resultion it instructs to se
 
 <p>In our example therefore, the only target where we need to set <code>Embedded Content Contains Swift Code</code> to <code>YES</code> is the main application target <code>UsingSwiftFrameworksFromObjectiveC</code>:</p>
 
-<p><img src="https://dl.dropboxusercontent.com/u/76613492/tumblr/images/UsingSwiftFrameworksFromObjectiveC/EmbeddedContent.png" alt="EmbeddedContentContainsSwiftCode" /></p>
+<p><img src="https://marcinczenko.github.io/img/using-swift-frameworks-from-objective-c-target/EmbeddedContent.png" alt="EmbeddedContentContainsSwiftCode" /></p>
 
 <h3 id="other-settings">Other settings</h3>
 
@@ -173,15 +173,15 @@ Embedding Content with Swift in Objective-C</a>. As resultion it instructs to se
 <ol>
 <li><p>Main application target - <code>UsingSwiftFrameworksFromObjectiveC</code>. We have to make sure that target depends on the framework, the framework is included in the <code>Link Binary With Libraries</code> build phase, and that the <code>Embed Frameworks</code> build phase contains the framework with the <code>Destination</code> set to <code>Frameworks</code>:</p>
 
-<p><img src="https://dl.dropboxusercontent.com/u/76613492/tumblr/images/UsingSwiftFrameworksFromObjectiveC/MainAppTarget.png" alt="MainApplicationTargetSettings" /></p></li>
+<p><img src="https://marcinczenko.github.io/img/using-swift-frameworks-from-objective-c-target/MainAppTarget.png" alt="MainApplicationTargetSettings" /></p></li>
 
 <li><p>The framework - <code>ExampleSwiftFramework</code> target. In our case we do not want it to depend on the main application target <code>UsingSwiftFrameworksFromObjectiveC</code>:</p>
 
-<p><img src="https://dl.dropboxusercontent.com/u/76613492/tumblr/images/UsingSwiftFrameworksFromObjectiveC/ExampleSwiftFramework.png" alt="ExampleSwiftFrameworkTargetSettings" /></p></li>
+<p><img src="https://marcinczenko.github.io/img/using-swift-frameworks-from-objective-c-target/ExampleSwiftFramework.png" alt="ExampleSwiftFrameworkTargetSettings" /></p></li>
 
 <li><p><code>ExampleSwiftFrameworkTests</code> target. It depends on <code>ExampleSwiftFramework</code> only and includes <code>ExampleSwiftFramework</code> in the <code>Link Binary With Libraries</code> build phase:</p>
 
-<p><img src="https://dl.dropboxusercontent.com/u/76613492/tumblr/images/UsingSwiftFrameworksFromObjectiveC/ExampleSwiftFrameworkTests.png" alt="ExampleSwiftFrameworkTestsTargetSettings" /></p></li>
+<p><img src="https://marcinczenko.github.io/img/using-swift-frameworks-from-objective-c-target/ExampleSwiftFrameworkTests.png" alt="ExampleSwiftFrameworkTestsTargetSettings" /></p></li>
 </ol>
 
 <h3 id="additional-references">Additional references</h3>
@@ -219,7 +219,7 @@ Embedding Content with Swift in Objective-C</a>. As resultion it instructs to se
     
     <div class="footer">
   
-  <p>Copyright Marcin Czenko 2015-2016. Powered by Hugo and the (modified) Slim theme.</p>
+  <p>Powered by <a href="http://gohugo.io">Hugo</a>. This theme—Slim—is open sourced on <a href="https://github.com/zhe/hugo-theme-slim">Github</a>.</p>
   
 </div>
 
