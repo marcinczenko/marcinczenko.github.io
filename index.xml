@@ -5,10 +5,19 @@
     <link>https://marcinczenko.github.io/</link>
     <description>Recent content on marcin.czenko</description>
     <generator>Hugo -- gohugo.io</generator>
-    <lastBuildDate>Thu, 23 Mar 2017 00:00:00 +0000</lastBuildDate>
+    <lastBuildDate>Mon, 18 Dec 2017 15:46:23 +0100</lastBuildDate>
     
 	<atom:link href="https://marcinczenko.github.io/index.xml" rel="self" type="application/rss+xml" />
     
+    
+    <item>
+      <title>Docker Swarm Networking (aka foundation for for private blockchain)</title>
+      <link>https://marcinczenko.github.io/post/docker-swarm-networking/</link>
+      <pubDate>Mon, 18 Dec 2017 15:46:23 +0100</pubDate>
+      
+      <guid>https://marcinczenko.github.io/post/docker-swarm-networking/</guid>
+      <description>The most natural use of docker swarms is to deploy a load-balanced service with a number of replicas. A slightly less common use case is when you want to deploy a service in such a way that each container is being deployed to a separate host and being directly accessible from the outside (so without mesh routing). Can we still take advantage of a docker swarm in such a scenario?</description>
+    </item>
     
     <item>
       <title>aurelia-redux</title>

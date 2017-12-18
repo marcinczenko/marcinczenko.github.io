@@ -1,0 +1,952 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <meta http-equiv="content-type" content="text/html; charset=utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
+<title> Docker Swarm Networking (aka foundation for for private blockchain) &middot; marcin.czenko </title>
+
+
+<link rel="stylesheet" href="https://marcinczenko.github.io/css/slim.css">
+<link rel="stylesheet" href="https://marcinczenko.github.io/css/highlight.min.css">
+<link href='https://fonts.googleapis.com/css?family=Source+Sans+Pro:400,700|Source+Code+Pro' rel='stylesheet' type='text/css'>
+
+<link rel="apple-touch-icon-precomposed" sizes="144x144" href="https://marcinczenko.github.io/apple-touch-icon-144-precomposed.png">
+<link rel="shortcut icon" href="https://marcinczenko.github.io/favicon.ico">
+
+
+
+
+</head>
+
+<body>
+  <div class="container">
+    <div class="header">
+  <h1 class="site-title"><a href="https://marcinczenko.github.io/">marcin.czenko</a></h1>
+  <p class="site-tagline">engineering blog</p>
+  <div class="nav">
+    <a class="nav-btn" href="#">
+      <span class="ci ci-burger"></span>
+    </a>
+    <ul class="nav-list">
+       
+	  <li class="spacer">&ac;</li>
+
+      <li><a href="https://github.com/marcinczenko">Github</a></li> 
+      <li><a href="https://twitter.com/mczenko">Twitter</a></li> 
+    </ul>
+  </div>
+</div>
+    <div class="content">
+      <div class="posts">
+        <div class="post">
+          <h2 class="post-title"><a href="https://marcinczenko.github.io/post/docker-swarm-networking/">Docker Swarm Networking (aka foundation for for private blockchain)</a></h2>
+          <span class="post-date">Dec 18, 2017 </span>
+          <div class="post-content">
+            
+
+<p>The most natural use of <em>docker swarms</em> is to deploy a load-balanced service with
+a number of replicas. A slightly less common use case is when you want to
+deploy a service in such a way that each container is being deployed to a
+separate host and being directly accessible from the outside (so without mesh
+routing). Can we still take advantage of a docker swarm in such a scenario? Or,
+even better question: does it still qualify as the intended use of
+docker swarms?</p>
+
+<p>In trying to answer this question, I found myself a bit overwhelmed with the
+networking infrastructure used by docker swarms. Or put it another way: I started to feel
+an urgent need to gain a better understanding of how networking in Docker actually works.</p>
+
+<p>Hence, in this post, I document my journey through the world of Docker networks.
+As a running example, I will be building a private blockchain network with one bootnode,
+two regular nodes and one miner.</p>
+
+<h2 id="service-deployments-and-port-publishing-modes">Service deployments and port publishing modes</h2>
+
+<p>So, does the use of swarm to achieve a sort of a P2P network configuration falls under the intended use?</p>
+
+<p>The original docker documentation gives us some hints. Firstly, in <a href="https://docs.docker.com/engine/swarm/how-swarm-mode-works/services/">How services work</a> we learn that there are two deployment modes: <code>global</code> and <code>replicated</code>:</p>
+
+<blockquote>
+<p>For a replicated service, you specify the number of identical tasks you want to run.
+For example, you decide to deploy an HTTP service with three replicas, each serving
+the same content.</p>
+
+<p>A global service is a service that runs one task on every node. There is no
+pre-specified number of tasks. Each time you add a node to the swarm, the orchestrator
+creates a task and the scheduler assigns the task to the new node. Good candidates for
+global services are monitoring agents, an anti-virus scanners or other types of containers
+that you want to run on every node in the swarm.</p>
+</blockquote>
+
+<p>You can specify the deployment mode by passing the <code>--mode</code> option to <a href="https://docs.docker.com/engine/reference/commandline/service_create">docker service create</a> command or by using the <a href="https://docs.docker.com/compose/compose-file/#mode">mode</a> attribute in your docker compose file. The default value is <code>replicated</code>.</p>
+
+<p>Thus, a global service deployment seems to fit our purpose: we do want to have one container instance running on each node.</p>
+
+<p>That&rsquo;s great, but what about the node-balancing?
+We know that, by default, each swarm node is connected to a so called overlay <em>ingress</em> network. By default the ingress networks uses a so called routing mesh. Routing mesh was introduced in Docker 1.12 and it uses <code>ipvs</code> and <code>iptables</code> to create a load balancer. We will not discuss the details of how <code>ipvs</code> and <code>iptables</code> are used to achieve that. What matters to us, is that each port published in ingress mode (the default) will be available on each node in the swarm - even when there is no task (task == an instance of a container) running on that node. The load balancer will make sure that the request is routed to one of the running replicas. The following paragraph from Section <a href="https://docs.docker.com/engine/swarm/networking/#configure-service-discovery">Configure service discovery</a> in <a href="https://docs.docker.com/engine/swarm/networking">Manage swarm service network</a> document gives a very understandable description of how the default load-balancing works in ingress mode:</p>
+
+<blockquote>
+<p>By default, when you attach a service to a network and that service publishes one or
+more ports, Docker assigns the service a virtual IP (VIP), which is the “front end” for
+clients to reach the service. Docker keeps a list of all worker nodes in the service, and
+routes requests between the client and one of the nodes. Each request from the client
+might be routed to a different node.</p>
+</blockquote>
+
+<p>In the same document we read that there is also a so called DNS round-robin (DNSRR) service discovery that is not based on a single virtual IP. It is useful when you want to
+use your own load balancer.</p>
+
+<p>Clearly, the ingress routing mesh is not what we want to keep here. The <code>global</code> service deployment allows us to have exactly one service task running on each node in the swarm, but we still want each task from our service to remain independently accessible - so shortly, we do not want to have any load balancing in front of our nodes. And it seems that someone at docker already thought about it.</p>
+
+<p>In <a href="https://success.docker.com/Architecture/Docker_Reference_Architecture%3A_Designing_Scalable%2C_Portable_Docker_Container_Networks">Docker Reference Architecture</a> in section <em>External Access for Docker Services</em> we learn about Docker port publishing modes.</p>
+
+<p>There are two modes of port publishing for services, <code>host</code> mode and <code>ingress</code> mode.
+The <code>ingress</code> publishing mode, the default one, utilizes the Swarm Routing Mesh to apply
+load balancing across the tasks in a service. That&rsquo;s what we describe above. And we do not
+want it. The <code>host</code> publishing mode, on the other hand, exposes ports only on the host
+where specific service tasks are running. The port is mapped directly to the container on
+that host. Of course, in order to prevent port collision, we have make sure that there is
+only a single task of a given service that runs on the given host. And this is where
+<code>host</code> mode publishing and <code>global</code> deployment mode come nicely hand in hand. The <em>Ingress
+Design</em> section of <a href="https://success.docker.com/Architecture/Docker_Reference_Architecture%3A_Designing_Scalable%2C_Portable_Docker_Container_Networks">Docker Reference Architecture</a> lists most common situations where
+global containers in host publishing mode are handy.</p>
+
+<p>After having a potential solution on the horizon, lets see an actual example and lets confirm that the underlaying network infrastructure is what we expect it to be.</p>
+
+<p>The picture below shows the intended configuration of our swarm:</p>
+
+<p><img src="https://marcinczenko.github.io/img/docker-overlay-networks/IntendedDeployment.svg" alt="Intended Deployment" /></p>
+
+<p>In this picture, <em>test-net</em>, <em>test-net-miner-worker</em>, and <em>test-net-worker</em> are the names of the swarm nodes. The <em>test-node</em> is a manager of the swarm. All are EC2 AWS instances:
+<em>test-net-miner-worker</em> is a <em>medium</em> instance, and <em>test-net</em> and <em>test-net-worker</em> are
+<em>micro</em> instances. Different colors correspond to two different stacks: <em>boot</em> and
+<em>nodes</em>. <em>bootnode</em> is our private blockchain network bootnode that together with <em>visualizer</em> form the <em>boot</em> stack. <em>visualizer</em> (<a href="https://github.com/dockersamples/docker-swarm-visualizer">dockersamples/docker-swarm-visualizer</a>) is a service that allows us to visualise the tasks deployed to swarm nodes. The picture below shows the actual deployment as shown by the <em>visualizer</em>:</p>
+
+<p><img src="https://marcinczenko.github.io/img/docker-overlay-networks/ActualDeployment.png" alt="ActualDeployment" /></p>
+
+<p><em>nodes_node</em> and <em>nodes_miner</em> belong to the second stack: <em>nodes</em>. A <em>node</em> is a regular blockchain node, while a <em>miner</em> is a mining node.</p>
+
+<p>Finally, the <em>boot</em> stack is deployed first, and the <em>nodes</em> stack second. This is
+because, the <em>nodes</em> stack needs to know the <code>enode</code> URL of the <em>bootnode</em>.</p>
+
+<p>We will first take a look at the swarm after first stack is deployment. We will show how to investigate the underlying network, and finally, we will deploy the second stack to show the complete picture.</p>
+
+<h2 id="the-boot-stack">The boot stack</h2>
+
+<p>We will first deploy the <em>boot</em> stack. Our swarm will look like this:</p>
+
+<p><img src="https://marcinczenko.github.io/img/docker-overlay-networks/BootStackDeployment.svg" alt="BootStackDeployment" /></p>
+
+<h3 id="creating-ec2-instances">Creating EC2 instances</h3>
+
+<p>We will not dive into details of creating AWS EC2 instances for our nodes. We use the Docker recommended VPC setup with three subnets, each in a separate availability zone. For the purpose of showing the underlaying network infrastructure, it does not matter in which zone or a subnet we start our EC2 instances. Just to show that, we will start the <code>test-net</code> and <code>test-net-worker</code> nodes in one subnet (availability zone <code>a</code>), while the <code>test-net-miner-worker</code> node will run in another subnet (availability zone <code>b</code>).</p>
+
+<p>We present the commands we used to start EC2 instances below:</p>
+
+<pre><code class="language-bash">docker-machine create --driver amazonec2 \
+  --amazonec2-region eu-west-1 \
+  --amazonec2-subnet-id subnet-1bd1a77c \
+  --amazonec2-vpc-id vpc-94ec97f3 \
+  --amazonec2-instance-type t2.micro \
+  test-net
+</code></pre>
+
+<pre><code class="language-bash">docker-machine create --driver amazonec2 \
+  --amazonec2-region eu-west-1 \
+  --amazonec2-subnet-id subnet-1bd1a77c \
+  --amazonec2-vpc-id vpc-94ec97f3 \
+  --amazonec2-instance-type t2.micro \
+  test-net-worker
+</code></pre>
+
+<pre><code class="language-bash">docker-machine create --driver amazonec2 \
+  --amazonec2-region eu-west-1 \
+  --amazonec2-subnet-id subnet-ef3e46a6 \
+  --amazonec2-vpc-id vpc-94ec97f3 \
+  --amazonec2-instance-type t2.medium \
+  --amazonec2-zone &quot;b&quot; \
+  test-net-miner-worker
+</code></pre>
+
+<pre><code class="language-bash">% docker-machine ls
+NAME                    ACTIVE  DRIVER       STATE     URL                        SWARM   DOCKER        ERRORS
+
+test-net                -       amazonec2    Running   tcp://34.240.161.173:2376          v17.09.0-ce
+test-net-miner-worker   -       amazonec2    Running   tcp://52.50.48.241:2376            v17.10.0-ce
+test-net-worker         -       amazonec2    Running   tcp://34.249.241.0:2376            v17.09.0-ce
+</code></pre>
+
+<h3 id="initializing-swarm-adding-the-manager-and-the-first-worker">Initializing swarm, adding the manager, and the first worker</h3>
+
+<p>We connect to the machine where we want the swarm manager to run (<code>test-net</code>):</p>
+
+<pre><code class="language-bash">$ docker-machine env test-net
+export DOCKER_TLS_VERIFY=&quot;1&quot;
+export DOCKER_HOST=&quot;tcp://34.240.161.173:2376&quot;
+export DOCKER_CERT_PATH=&quot;/Users/mczenko/.docker/machine/machines/test-net&quot;
+export DOCKER_MACHINE_NAME=&quot;test-net&quot;
+# Run this command to configure your shell:
+# eval $(docker-machine env test-net)
+
+$ eval $(docker-machine env test-net)
+</code></pre>
+
+<blockquote>
+<p>We can also directly ssh to the machine by running:</p>
+
+<pre><code class="language-bash">$ docker-machine ssh test-net
+</code></pre>
+
+<p>and execute all the following docker commands there.
+Notice, however, that you will need to add <code>sudo</code> in front of each docker-related command.</p>
+</blockquote>
+
+<p>Once there, we run:</p>
+
+<pre><code class="language-bash">$ docker swarm init
+Swarm initialized: current node (p1wwn2roanksz8ac002oa3n0i) is now a manager.
+
+To add a worker to this swarm, run the following command:
+
+    docker swarm join \
+    --token SWMTKN-1-33wtt119mlt3pcni82crdxcyxqqqt2o607opfwwj2so644f2v3-78zkfrynuxn8p20etff6i69j5 \
+    172.31.18.69:2377
+
+To add a manager to this swarm, run 'docker swarm join-token manager' and follow the instructions.
+</code></pre>
+
+<p>This will initialize swarm and will make the current node a <em>swarm manager</em>. The command returns a <em>join token</em>, which is needed
+every time you want to add a new worker node to the swarm. In case you do not have it anymore, you can always retrieve it later by running:</p>
+
+<pre><code class="language-bash">$ docker swarm join-token -q worker
+SWMTKN-1-33wtt119mlt3pcni82crdxcyxqqqt2o607opfwwj2so644f2v3-78zkfrynuxn8p20etff6i69j5
+</code></pre>
+
+<p>Having the join token, in another terminal, connect to the <code>test-net-worker</code> machine and then run:</p>
+
+<pre><code class="language-bash">$ docker swarm join \
+    --token SWMTKN-1-33wtt119mlt3pcni82crdxcyxqqqt2o607opfwwj2so644f2v3-78zkfrynuxn8p20etff6i69j5 \
+    172.31.18.69:2377
+This node joined a swarm as a worker.
+</code></pre>
+
+<p>We can confirm that our swarm has now two nodes - one manager and one worker - by returning to the manager machine and running:</p>
+
+<pre><code class="language-bash">$ docker node ls
+ID                            HOSTNAME                STATUS              AVAILABILITY        MANAGER STATUS
+p1wwn2roanksz8ac002oa3n0i *   test-net                Ready               Active              Leader
+zq4nwih9wdhxbm3u5ww3lgk7g     test-net-worker         Ready               Active
+</code></pre>
+
+<p>Our swarm initial swarm is ready and we are ready to deploy the boot stack.</p>
+
+<h3 id="deploying-the-boot-stack">Deploying the boot stack</h3>
+
+<p>We will use a docker compose file to declaratively describe our stacks. Let&rsquo;s first take a look at the docker compose file for the boot stack (<code>docker-compose-boot.yml</code>):</p>
+
+<pre><code class="language-yml">version: &quot;3.4&quot;
+services:
+  bootnode:
+    image: charterhouse/blockchain-bootnode:v0.1
+    deploy:
+      placement:
+        constraints: [node.role != manager]
+      restart_policy:
+        condition: on-failure
+    ports:
+      - target: 30301
+        published: 30301
+        protocol: tcp
+        mode: host
+    volumes:
+      - type: volume
+        source: data
+        target: /node/data
+  visualizer:
+    image: dockersamples/visualizer:stable
+    ports:
+      - &quot;8080:8080&quot;
+    volumes:
+      - &quot;/var/run/docker.sock:/var/run/docker.sock&quot;
+    deploy:
+      placement:
+        constraints: [node.role == manager]
+volumes:
+  data:
+</code></pre>
+
+<p>We see that there are two services here: one is <code>bootnode</code>, the second is <code>visualizer</code>. We use placement constraints to make sure that bootnode is placed on any node that the swarm manager node, and we want the opposite for the manager. Now, for the interesting part. Both services are using the default deployment mode, which, recall, is <code>replicated</code>. We do not specify number of replicas for any of them, which means there will one instance of <code>bootnode</code> and one instance of <code>visualizer</code>. Now, in the <code>port</code> sections we see important differences between the two services. The <code>bootnode</code> service specifies port publishing mode to be <code>host</code> while the <code>visualizer</code> service assumes the default, which is <code>ingress</code>.</p>
+
+<blockquote>
+<p>If you would use CLI instead of a docker compose file to create a service, the port publishing mode can only be specified using so called <em>long syntax</em>:</p>
+
+<pre><code class="language-bash">--publish mode=host,target=30301,published=30301,protocol=tcp
+</code></pre>
+
+<p>If we use the defaults, like in <code>visualizer</code>, we could just use: <code>-p 8080:8080</code> (target:published).</p>
+</blockquote>
+
+<p>We are ready to deploy our stack. From the swarm manager node (<code>test-net</code>), run:</p>
+
+<pre><code class="language-bash">docker stack deploy -c docker-compose-boot.yml boot
+</code></pre>
+
+<p>As expected this will create two services: <code>boot_bootnode</code> and <code>boot_visualizer</code> (the name prefix in front of the service name specified in the docker compose file is the name of the stack that we passed as the last argument to the command above). The command will also create a <em>default</em> overlay network named <code>boot_default</code>.</p>
+
+<p>Now, we should be able to access our bootnode and extract its <em>enode url</em> that we will use later when deploying the <em>nodes</em> stack.</p>
+
+<p>We specified that bootnode should be deployed to a node that is not a swarm manager. Because at this stage we only have one non-manager swarm node - <code>test-net-worker</code> - this is where we should find the corresponding Docker container running. After logging into <code>test-net-worker</code> machine, execute:</p>
+
+<pre><code class="language-bash">$ docker container ls
+CONTAINER ID        IMAGE
+d152bf34c960        charterhouse/blockchain-bootnode:v0.1
+...
+
+$ docker exec -it d152bf34c960 /bin/bash
+root@d152bf34c960:/node# geth attach ipc:/node/data/geth.ipc
+Welcome to the Geth JavaScript console!
+
+instance: Geth/v1.7.2-stable-1db4ecdc/linux-amd64/go1.9
+ modules: admin:1.0 debug:1.0 eth:1.0 miner:1.0 net:1.0 personal:1.0 rpc:1.0 txpool:1.0 web3:1.0
+&gt; admin.nodeInfo.enode
+&quot;enode://96e26cf742db3f4bd74d7f7e11e87d83abba370e227756f3da735a902c3c07584f3bc077d1988091a91f68c0f0dec3a23704948ebe061c1a0484f63f63054ae4@[::]:30301&quot;
+</code></pre>
+
+<p>In order to obtain a complete <em>enode url</em> from the returned value, we have to replace the <code>[::]</code> part with the (private) IP address of the EC2 instance where the bootnode is deployed. In our case it is <code>172.31.18.53</code>, therefore the complete <em>enode url</em> of the bootnode is:</p>
+
+<pre><code>enode://96e26cf742db3f4bd74d7f7e11e87d83abba370e227756f3da735a902c3c07584f3bc077d1988091a91f68c0f0dec3a23704948ebe061c1a0484f63f63054ae4@172.31.18.53:30301
+</code></pre>
+
+<p>We will use this enode url later when deploying the <em>nodes</em> stack.</p>
+
+<p>Having our services deployed, this seems to be the right moment to look a bit deeper under the hood in order to understand how our services talk to each other.</p>
+
+<h3 id="exploring-docker-networking-infrastructure">Exploring docker networking infrastructure</h3>
+
+<p>In looking at our current deployment we skip many details (as this would require a book on its own), but we rather focus on how to extract the information that will let us see how docker services are connected in our not so common example.</p>
+
+<p>Let&rsquo;s go to the swarm manager node:</p>
+
+<pre><code>$ docker-machine ssh test-net
+</code></pre>
+
+<p>Now let&rsquo;s run:</p>
+
+<pre><code class="language-bash">$ sudo ip -details addr
+1: lo: &lt;LOOPBACK,UP,LOWER_UP&gt; mtu 65536 qdisc noqueue state UNKNOWN group default qlen 1
+    link/loopback 00:00:00:00:00:00 brd 00:00:00:00:00:00 promiscuity 0
+    inet 127.0.0.1/8 scope host lo
+       valid_lft forever preferred_lft forever
+    inet6 ::1/128 scope host
+       valid_lft forever preferred_lft forever
+2: eth0: &lt;BROADCAST,MULTICAST,UP,LOWER_UP&gt; mtu 9001 qdisc pfifo_fast state UP group default qlen 1000
+    link/ether 02:8d:10:78:8f:e2 brd ff:ff:ff:ff:ff:ff promiscuity 0
+    inet 172.31.18.69/20 brd 172.31.31.255 scope global eth0
+       valid_lft forever preferred_lft forever
+    inet6 fe80::8d:10ff:fe78:8fe2/64 scope link
+       valid_lft forever preferred_lft forever
+4: docker0: &lt;NO-CARRIER,BROADCAST,MULTICAST,UP&gt; mtu 1500 qdisc noqueue state DOWN group default
+    link/ether 02:42:53:f2:44:1a brd ff:ff:ff:ff:ff:ff promiscuity 0
+    bridge forward_delay 1500 hello_time 200 max_age 2000 ageing_time 30000 stp_state 0 priority 32768 vlan_filtering 0 vlan_protocol 802.1Q
+    inet 172.17.0.1/16 scope global docker0
+       valid_lft forever preferred_lft forever
+9: docker_gwbridge: &lt;BROADCAST,MULTICAST,UP,LOWER_UP&gt; mtu 1500 qdisc noqueue state UP group default
+    link/ether 02:42:2f:f5:c1:14 brd ff:ff:ff:ff:ff:ff promiscuity 0
+    bridge forward_delay 1500 hello_time 200 max_age 2000 ageing_time 30000 stp_state 0 priority 32768 vlan_filtering 0 vlan_protocol 802.1Q
+    inet 172.18.0.1/16 scope global docker_gwbridge
+       valid_lft forever preferred_lft forever
+    inet6 fe80::42:2fff:fef5:c114/64 scope link
+       valid_lft forever preferred_lft forever
+11: veth59b612a@if10: &lt;BROADCAST,MULTICAST,UP,LOWER_UP&gt; mtu 1500 qdisc noqueue master docker_gwbridge state UP group default
+    link/ether 32:76:d3:5d:7e:5a brd ff:ff:ff:ff:ff:ff link-netnsid 1 promiscuity 1
+    veth
+    bridge_slave state forwarding priority 32 cost 2 hairpin off guard off root_block off fastleave off learning on flood on
+    inet6 fe80::3076:d3ff:fe5d:7e5a/64 scope link
+       valid_lft forever preferred_lft forever
+36: veth1b25625@if35: &lt;BROADCAST,MULTICAST,UP,LOWER_UP&gt; mtu 1500 qdisc noqueue master docker_gwbridge state UP group default
+    link/ether ae:da:58:0c:61:52 brd ff:ff:ff:ff:ff:ff link-netnsid 6 promiscuity 1
+    veth
+    bridge_slave state forwarding priority 32 cost 2 hairpin off guard off root_block off fastleave off learning on flood on
+    inet6 fe80::acda:58ff:fe0c:6152/64 scope link
+       valid_lft forever preferred_lft forever
+60: veth574ac0b@if59: &lt;BROADCAST,MULTICAST,UP,LOWER_UP&gt; mtu 1500 qdisc noqueue master docker_gwbridge state UP group default
+    link/ether e6:fe:b0:81:95:3c brd ff:ff:ff:ff:ff:ff link-netnsid 8 promiscuity 1
+    veth
+    bridge_slave state forwarding priority 32 cost 2 hairpin off guard off root_block off fastleave off learning on flood on
+    inet6 fe80::e4fe:b0ff:fe81:953c/64 scope link
+       valid_lft forever preferred_lft forever
+</code></pre>
+
+<p>We see a number of network interfaces. They all belong to the host (a Docker Swarm node). The host has its own network stack (naturally) and all the service containers that run on the given host also have their own network namespace. Moreover, as we will see, each overlay network gets its own network namespace on each host that is connected to it.</p>
+
+<blockquote>
+<p>There are many good reading resources on network namespaces. To get a good intro/refresh on Linux namespaces I would recommend <a href="https://blog.scottlowe.org/2013/09/04/introducing-linux-network-namespaces">Introducing Linux Network Namespaces</a> for a more general overview and <a href="https://platform9.com/blog/container-namespaces-deep-dive-container-networking/">Container Namespaces – Deep Dive into Container Networking</a> for more Docker-specific perspective.</p>
+</blockquote>
+
+<p>From the host environment, it is possible to list all involved network namespaces by     using <code>ip netns</code> command. It needs some setup though, as it does not work out of the box. From the docker machine run the following commands:</p>
+
+<pre><code class="language-bash">$ cd /var/run
+$ sudo ln -s /var/run/docker/netns netns
+</code></pre>
+
+<p>And now:</p>
+
+<pre><code class="language-bash">$ sudo ip netns
+d416717e3884 (id: 6)
+1-njd15rznze (id: 5)
+1-ujjyfjaj0m (id: 0)
+ingress_sbox (id: 1)
+</code></pre>
+
+<p>We see here five network namespaces that are present on the host. Finding which one is not very easy, but still possible. First let&rsquo;s list the docker networks on this host:</p>
+
+<pre><code class="language-bash">$ sudo docker network ls
+NETWORK ID          NAME                DRIVER              SCOPE
+njd15rznzeua        boot_default        overlay             swarm
+c171dfb8f857        bridge              bridge              local
+fd902a348f7e        docker_gwbridge     bridge              local
+fe277b49daa8        host                host                local
+ujjyfjaj0mcd        ingress             overlay             swarm
+ba680556f5d3        none                null                local
+</code></pre>
+
+<p>We see quite a number of them. Let&rsquo;s go shortly over them. <code>boot_default</code> is the default overlay network that was created at the moment that we deployed the <code>boot</code> stack. <code>bridge</code>, <code>host</code>, and <code>none</code> are networks you find on every Docker installation. This is quite well explained in <a href="https://docs.docker.com/engine/userguide/networking">Docker container networking</a> and in <a href="https://docs.docker.com/engine/reference/run/#network-settings">Network settings</a>. The <code>bridge</code> network is the default, but you can make it explicit with the <code>--network=&quot;bridge&quot;</code> option to <code>docker run</code> command. On one side it attaches to host via <code>docker0</code> interface and to the container on the other side via pair of <code>veth</code> interfaces. <code>host</code> (<code>--network=&quot;host&quot;</code>) connects the container directly to the host networking stack, so there is no isolation, but it is also the fastest connection possible. By using <code>none</code> (<code>--network=&quot;none&quot;</code>) you effectively say that the container will not have access to any external routes.
+In our case, none of these three default networks are in use. In swarm node, we are given another bridge network called <code>docker_gwbridge</code>. In the <code>host</code> port publishing mode (do not mistake it with the <code>host</code> network that we discussed above), the <code>docker_gwbridge</code> is responsible for both egress and ingress traffic (out and in). In the <code>ingress</code> port publishing mode, the <code>docker_gwbridge</code> carries the egress traffic, while the ingress traffic is handled by another network that is created for swarm nodes: the <code>ingress</code> overlay network (we already described it a bit in the text above).</p>
+
+<p>Recall, that we use <code>host</code> publishing for our <code>bootnode</code> service and the default <code>ingress</code> publishing for <code>visualizer</code>. What we expect is that the <code>visualizer</code> is connected to the <code>ingress</code> network for the ingress (external in) traffic with mesh routing, to the <code>docker_bridge</code> network for the egress (external out) traffic, and to the <code>boot_default</code> overlay network for in-swarm communication with other containers.</p>
+
+<p>Ok, but let&rsquo;s go back to the network namespaces. From the network ids and the namespaces identifiers, we suspect that there is a connection between <code>njd15rznzeua</code> network id (<code>boot_default</code>) and <code>1-njd15rznze</code> network namespace. In the same way there may be a connection between <code>ujjyfjaj0mcd</code> network id (<code>boot_default</code>) and <code>1-ujjyfjaj0m</code> network namespace. Let&rsquo;s check that this indeed is the case. Let&rsquo;s take a look what&rsquo;s inside of the <code>1-njd15rznze</code> network namespace. From <code>test-net</code> host run:</p>
+
+<pre><code class="language-bash">$ sudo ip netns exec 1-njd15rznze ip -details addr
+1: lo: &lt;LOOPBACK,UP,LOWER_UP&gt; mtu 65536 qdisc noqueue state UNKNOWN group default qlen 1
+    link/loopback 00:00:00:00:00:00 brd 00:00:00:00:00:00 promiscuity 0
+    inet 127.0.0.1/8 scope host lo
+       valid_lft forever preferred_lft forever
+2: br0: &lt;BROADCAST,MULTICAST,UP,LOWER_UP&gt; mtu 1450 qdisc noqueue state UP group default
+    link/ether 06:09:fa:4e:10:9c brd ff:ff:ff:ff:ff:ff promiscuity 0
+    bridge forward_delay 1500 hello_time 200 max_age 2000 ageing_time 30000 stp_state 0 priority 32768 vlan_filtering 0 vlan_protocol 802.1Q
+    inet 10.0.0.1/24 scope global br0
+       valid_lft forever preferred_lft forever
+37: vxlan0: &lt;BROADCAST,MULTICAST,UP,LOWER_UP&gt; mtu 1450 qdisc noqueue master br0 state UNKNOWN group default
+    link/ether 96:b0:7c:39:2e:c4 brd ff:ff:ff:ff:ff:ff link-netnsid 0 promiscuity 1
+    vxlan id 4097 srcport 0 0 dstport 4789 proxy l2miss l3miss ageing 300
+    bridge_slave state forwarding priority 32 cost 100 hairpin off guard off root_block off fastleave off learning on flood on
+39: veth0@if38: &lt;BROADCAST,MULTICAST,UP,LOWER_UP&gt; mtu 1450 qdisc noqueue master br0 state UP group default
+    link/ether 06:09:fa:4e:10:9c brd ff:ff:ff:ff:ff:ff link-netnsid 1 promiscuity 1
+    veth
+    bridge_slave state forwarding priority 32 cost 2 hairpin off guard off root_block off fastleave off learning on flood on
+</code></pre>
+
+<p>We see that this network namespace has a bridge <code>br0</code> with gateway address <code>10.0.0.1/24</code> and two network interfaces. One virtual eth interface: <code>veth0</code>, and a <code>vxlan0</code> - a VXLAN Tunnel Endpoint (VTEP) of the virtual Layer 2 overlay network. Now, to see that this is actually the <code>boot_default</code> overlay network, let&rsquo;s inspect <code>njd15rznzeua</code> network:</p>
+
+<pre><code class="language-bash">$ sudo docker network inspect boot_default
+[
+    {
+        &quot;Name&quot;: &quot;boot_default&quot;,
+        &quot;Id&quot;: &quot;njd15rznzeuaeuvnjdxr7c2w3&quot;,
+        &quot;Created&quot;: &quot;2017-10-16T23:51:56.977709577Z&quot;,
+        &quot;Scope&quot;: &quot;swarm&quot;,
+        &quot;Driver&quot;: &quot;overlay&quot;,
+        &quot;EnableIPv6&quot;: false,
+        &quot;IPAM&quot;: {
+            &quot;Driver&quot;: &quot;default&quot;,
+            &quot;Options&quot;: null,
+            &quot;Config&quot;: [
+                {
+                    &quot;Subnet&quot;: &quot;10.0.0.0/24&quot;,
+                    &quot;Gateway&quot;: &quot;10.0.0.1&quot;
+                }
+            ]
+        },
+        &quot;Internal&quot;: false,
+        &quot;Attachable&quot;: false,
+        &quot;Ingress&quot;: false,
+        &quot;ConfigFrom&quot;: {
+            &quot;Network&quot;: &quot;&quot;
+        },
+        &quot;ConfigOnly&quot;: false,
+        &quot;Containers&quot;: {
+            &quot;2106bcda4962923de743a5536f0177878758abc5259739980701e91e55494d7f&quot;: {
+                &quot;Name&quot;: &quot;boot_visualizer.1.ruxyuicwouirh2tl2nxjt4pac&quot;,
+                &quot;EndpointID&quot;: &quot;533c9ac221cac8efe607ffd8292a2c5b44002c9a6e95dd7d25c2f0b4c4c73fb7&quot;,
+                &quot;MacAddress&quot;: &quot;02:42:0a:00:00:03&quot;,
+                &quot;IPv4Address&quot;: &quot;10.0.0.3/24&quot;,
+                &quot;IPv6Address&quot;: &quot;&quot;
+            }
+        },
+        &quot;Options&quot;: {
+            &quot;com.docker.network.driver.overlay.vxlanid_list&quot;: &quot;4097&quot;
+        },
+        &quot;Labels&quot;: {
+            &quot;com.docker.stack.namespace&quot;: &quot;boot&quot;
+        },
+        &quot;Peers&quot;: [
+            {
+                &quot;Name&quot;: &quot;test-net-00bd164ff36d&quot;,
+                &quot;IP&quot;: &quot;172.31.18.69&quot;
+            }
+        ]
+    }
+]
+</code></pre>
+
+<p>We see in the <code>Config</code> section that its gateway address is indeed <code>10.0.0.1</code> and it has a container connected to it: <code>boot_visualizer</code> with address <code>10.0.0.3/24</code>. Now, looking at virtual interfaces returned by <code>ip netns exec 1-njd15rznze ip -details addr</code>, we see that they indicate the other end of the connection. For instance from <code>veth0@if38</code> we read that the other end of the connection has index <code>38</code>. Let&rsquo;s find it by looking at the network interfaces at the visualizer container:</p>
+
+<pre><code class="language-bash">$ sudo docker exec 2106bcda4962 ip addr
+1: lo: &lt;LOOPBACK,UP,LOWER_UP&gt; mtu 65536 qdisc noqueue state UNKNOWN qlen 1
+    link/loopback 00:00:00:00:00:00 brd 00:00:00:00:00:00
+    inet 127.0.0.1/8 scope host lo
+       valid_lft forever preferred_lft forever
+    inet 10.0.0.2/32 scope global lo
+       valid_lft forever preferred_lft forever
+    inet 10.255.0.4/32 scope global lo
+       valid_lft forever preferred_lft forever
+33: eth2@if34: &lt;BROADCAST,MULTICAST,UP,LOWER_UP,M-DOWN&gt; mtu 1450 qdisc noqueue state UP
+    link/ether 02:42:0a:ff:00:05 brd ff:ff:ff:ff:ff:ff
+    inet 10.255.0.5/16 scope global eth2
+       valid_lft forever preferred_lft forever
+35: eth1@if36: &lt;BROADCAST,MULTICAST,UP,LOWER_UP,M-DOWN&gt; mtu 1500 qdisc noqueue state UP
+    link/ether 02:42:ac:12:00:03 brd ff:ff:ff:ff:ff:ff
+    inet 172.18.0.3/16 scope global eth1
+       valid_lft forever preferred_lft forever
+38: eth0@if39: &lt;BROADCAST,MULTICAST,UP,LOWER_UP,M-DOWN&gt; mtu 1450 qdisc noqueue state UP
+    link/ether 02:42:0a:00:00:03 brd ff:ff:ff:ff:ff:ff
+    inet 10.0.0.3/24 scope global eth0
+       valid_lft forever preferred_lft forever
+</code></pre>
+
+<p>where <code>2106bcda4962</code> is the id of the visualizer container (we got by running <code>sudo docker container ls</code>).
+We see that it has a network interface <code>38: eth0@if39</code> assigned the address <code>10.0.0.3/24</code>. This should make us confident that we identified the <code>boot_default</code> overlay network correctly and we have confirmed that <code>visualizer</code> is connected to it. Additionally, if we run:</p>
+
+<pre><code class="language-bash">$ sudo ip netns exec d416717e3884 ip -details addr
+1: lo: &lt;LOOPBACK,UP,LOWER_UP&gt; mtu 65536 qdisc noqueue state UNKNOWN group default qlen 1
+    link/loopback 00:00:00:00:00:00 brd 00:00:00:00:00:00 promiscuity 0
+    inet 127.0.0.1/8 scope host lo
+       valid_lft forever preferred_lft forever
+    inet 10.0.0.2/32 scope global lo
+       valid_lft forever preferred_lft forever
+    inet 10.255.0.4/32 scope global lo
+       valid_lft forever preferred_lft forever
+33: eth2@if34: &lt;BROADCAST,MULTICAST,UP,LOWER_UP&gt; mtu 1450 qdisc noqueue state UP group default
+    link/ether 02:42:0a:ff:00:05 brd ff:ff:ff:ff:ff:ff link-netnsid 2 promiscuity 0
+    veth
+    inet 10.255.0.5/16 scope global eth2
+       valid_lft forever preferred_lft forever
+35: eth1@if36: &lt;BROADCAST,MULTICAST,UP,LOWER_UP&gt; mtu 1500 qdisc noqueue state UP group default
+    link/ether 02:42:ac:12:00:03 brd ff:ff:ff:ff:ff:ff link-netnsid 1 promiscuity 0
+    veth
+    inet 172.18.0.3/16 scope global eth1
+       valid_lft forever preferred_lft forever
+38: eth0@if39: &lt;BROADCAST,MULTICAST,UP,LOWER_UP&gt; mtu 1450 qdisc noqueue state UP group default
+    link/ether 02:42:0a:00:00:03 brd ff:ff:ff:ff:ff:ff link-netnsid 0 promiscuity 0
+    veth
+    inet 10.0.0.3/24 scope global eth0
+       valid_lft forever preferred_lft forever
+</code></pre>
+
+<p>we get a match: network namespace <code>d416717e3884</code> is indeed associated with the visualizer container. In a similar way we can find out that there is a match between network namespace <code>1-ujjyfjaj0m</code> and the <code>ingress</code> overlay network with id <code>ujjyfjaj0mcd</code>:</p>
+
+<pre><code class="language-bash">$ sudo ip netns exec 1-ujjyfjaj0m ip -details addr
+1: lo: &lt;LOOPBACK,UP,LOWER_UP&gt; mtu 65536 qdisc noqueue state UNKNOWN group default qlen 1
+    link/loopback 00:00:00:00:00:00 brd 00:00:00:00:00:00 promiscuity 0
+    inet 127.0.0.1/8 scope host lo
+       valid_lft forever preferred_lft forever
+2: br0: &lt;BROADCAST,MULTICAST,UP,LOWER_UP&gt; mtu 1450 qdisc noqueue state UP group default
+    link/ether 1a:b0:06:80:e7:d9 brd ff:ff:ff:ff:ff:ff promiscuity 0
+    bridge forward_delay 1500 hello_time 200 max_age 2000 ageing_time 30000 stp_state 0 priority 32768 vlan_filtering 0 vlan_protocol 802.1Q
+    inet 10.255.0.1/16 scope global br0
+       valid_lft forever preferred_lft forever
+6: vxlan0: &lt;BROADCAST,MULTICAST,UP,LOWER_UP&gt; mtu 1450 qdisc noqueue master br0 state UNKNOWN group default
+    link/ether 1a:b0:06:80:e7:d9 brd ff:ff:ff:ff:ff:ff link-netnsid 0 promiscuity 1
+    vxlan id 4096 srcport 0 0 dstport 4789 proxy l2miss l3miss ageing 300
+    bridge_slave state forwarding priority 32 cost 100 hairpin off guard off root_block off fastleave off learning on flood on
+8: veth0@if7: &lt;BROADCAST,MULTICAST,UP,LOWER_UP&gt; mtu 1450 qdisc noqueue master br0 state UP group default
+    link/ether 5a:4e:2c:81:f6:1c brd ff:ff:ff:ff:ff:ff link-netnsid 1 promiscuity 1
+    veth
+    bridge_slave state forwarding priority 32 cost 2 hairpin off guard off root_block off fastleave off learning on flood on
+34: veth4@if33: &lt;BROADCAST,MULTICAST,UP,LOWER_UP&gt; mtu 1450 qdisc noqueue master br0 state UP group default
+    link/ether de:4e:de:1c:c9:f0 brd ff:ff:ff:ff:ff:ff link-netnsid 2 promiscuity 1
+    veth
+    bridge_slave state forwarding priority 32 cost 2 hairpin off guard off root_block off fastleave off learning on flood on
+
+$ sudo docker network inspect ingress
+[
+    {
+        &quot;Name&quot;: &quot;ingress&quot;,
+        &quot;Id&quot;: &quot;ujjyfjaj0mcdgfizjjpeyyyj7&quot;,
+        &quot;Created&quot;: &quot;2017-10-16T22:52:37.922899789Z&quot;,
+        &quot;Scope&quot;: &quot;swarm&quot;,
+        &quot;Driver&quot;: &quot;overlay&quot;,
+        &quot;EnableIPv6&quot;: false,
+        &quot;IPAM&quot;: {
+            &quot;Driver&quot;: &quot;default&quot;,
+            &quot;Options&quot;: null,
+            &quot;Config&quot;: [
+                {
+                    &quot;Subnet&quot;: &quot;10.255.0.0/16&quot;,
+                    &quot;Gateway&quot;: &quot;10.255.0.1&quot;
+                }
+            ]
+        },
+        &quot;Internal&quot;: false,
+        &quot;Attachable&quot;: false,
+        &quot;Ingress&quot;: true,
+        &quot;ConfigFrom&quot;: {
+            &quot;Network&quot;: &quot;&quot;
+        },
+        &quot;ConfigOnly&quot;: false,
+        &quot;Containers&quot;: {
+            &quot;2106bcda4962923de743a5536f0177878758abc5259739980701e91e55494d7f&quot;: {
+                &quot;Name&quot;: &quot;boot_visualizer.1.ruxyuicwouirh2tl2nxjt4pac&quot;,
+                &quot;EndpointID&quot;: &quot;6f7ca1625d09fdd59066a176c4aafcf3016565fc2c94e18b8e696c4a3fc7102d&quot;,
+                &quot;MacAddress&quot;: &quot;02:42:0a:ff:00:05&quot;,
+                &quot;IPv4Address&quot;: &quot;10.255.0.5/16&quot;,
+                &quot;IPv6Address&quot;: &quot;&quot;
+            },
+            &quot;ingress-sbox&quot;: {
+                &quot;Name&quot;: &quot;ingress-endpoint&quot;,
+                &quot;EndpointID&quot;: &quot;fca3977ee5a30bc21daa6c56019324851e4da7268afff030595d2ae2a17e3888&quot;,
+                &quot;MacAddress&quot;: &quot;02:42:0a:ff:00:02&quot;,
+                &quot;IPv4Address&quot;: &quot;10.255.0.2/16&quot;,
+                &quot;IPv6Address&quot;: &quot;&quot;
+            }
+        },
+        &quot;Options&quot;: {
+            &quot;com.docker.network.driver.overlay.vxlanid_list&quot;: &quot;4096&quot;
+        },
+        &quot;Labels&quot;: {},
+        &quot;Peers&quot;: [
+            {
+                &quot;Name&quot;: &quot;test-net-00bd164ff36d&quot;,
+                &quot;IP&quot;: &quot;172.31.18.69&quot;
+            }
+        ]
+    }
+]
+</code></pre>
+
+<p>Here, we see a container named <code>ingress-sbox</code> connected to it. It corresponds to the <code>ingress_sbox</code> network namespace. Let&rsquo;s inspect:</p>
+
+<pre><code class="language-bash">$ sudo ip netns exec ingress_sbox ip -details addr
+1: lo: &lt;LOOPBACK,UP,LOWER_UP&gt; mtu 65536 qdisc noqueue state UNKNOWN group default qlen 1
+    link/loopback 00:00:00:00:00:00 brd 00:00:00:00:00:00 promiscuity 0
+    inet 127.0.0.1/8 scope host lo
+       valid_lft forever preferred_lft forever
+7: eth0@if8: &lt;BROADCAST,MULTICAST,UP,LOWER_UP&gt; mtu 1450 qdisc noqueue state UP group default
+    link/ether 02:42:0a:ff:00:02 brd ff:ff:ff:ff:ff:ff link-netnsid 0 promiscuity 0
+    veth
+    inet 10.255.0.2/16 scope global eth0
+       valid_lft forever preferred_lft forever
+10: eth1@if11: &lt;BROADCAST,MULTICAST,UP,LOWER_UP&gt; mtu 1500 qdisc noqueue state UP group default
+    link/ether 02:42:ac:12:00:02 brd ff:ff:ff:ff:ff:ff link-netnsid 1 promiscuity 0
+    veth
+    inet 172.18.0.2/16 scope global eth1
+       valid_lft forever preferred_lft forever
+</code></pre>
+
+<p>Having all these outputs we can finally draw a network diagram, where we can clearly see all the connections:</p>
+
+<p><img src="https://marcinczenko.github.io/img/docker-overlay-networks/test-net-boot-only.svg" alt="test-net-boot-only" /></p>
+
+<p>Doing a similar investigation, we can also explore the networking on the second node: <code>test-net-worker</code>:</p>
+
+<p><img src="https://marcinczenko.github.io/img/docker-overlay-networks/test-net-worker-boot-only.svg" alt="test-net-worker-boot-only" /></p>
+
+<h3 id="deploying-the-nodes-stack">Deploying the nodes stack</h3>
+
+<p>Now that we investigated networking behind the <code>boot</code> stack, we are ready to deploy another stack on the same docker swarm. Below is the docker compose file for the <em>nodes</em> stack:</p>
+
+<pre><code class="language-yaml">version: &quot;3.4&quot;
+services:
+  node:
+    image: charterhouse/blockchain-node:v0.1
+    command: enode://96e26cf742db3f4bd74d7f7e11e87d83abba370e227756f3da735a902c3c07584f3bc077d1988091a91f68c0f0dec3a23704948ebe061c1a0484f63f63054ae4@172.31.18.53:30301
+    deploy:
+      mode: global
+      restart_policy:
+        condition: on-failure
+      placement:
+        constraints:
+          - node.labels.name != miner
+    ports:
+      - target: 30303
+        published: 30303
+        protocol: tcp
+        mode: host
+      - target: 8545
+        published: 8545
+        protocol: tcp
+        mode: host
+    volumes:
+      - type: volume
+        source: data
+        target: /node/data
+    networks:
+      - boot_default
+  miner:
+    image: charterhouse/blockchain-miner:v0.1
+    command: enode://96e26cf742db3f4bd74d7f7e11e87d83abba370e227756f3da735a902c3c07584f3bc077d1988091a91f68c0f0dec3a23704948ebe061c1a0484f63f63054ae4@172.31.18.53:30301
+    deploy:
+      mode: global
+      restart_policy:
+        condition: on-failure
+      placement:
+        constraints:
+          - node.labels.name == miner
+    ports:
+      - target: 30303
+        published: 30303
+        protocol: tcp
+        mode: host
+    volumes:
+      - type: volume
+        source: data
+        target: /node/data
+    networks:
+      - boot_default
+volumes:
+  data:
+networks:
+  boot_default:
+    external: true
+</code></pre>
+
+<p>Here we use two separate images. One for a regular node and one for a miner. The difference between the regular node and the miner is only in the RPC settings: a miner does not expose RPC interface:</p>
+
+<p><strong>regular node (Dockerfile)</strong></p>
+
+<pre><code class="language-Dockerfile">FROM ubuntu
+
+WORKDIR /node
+
+ADD . /node
+
+EXPOSE 30303 8545
+
+RUN apt-get update; \
+  apt-get install -y iproute2; \
+  apt-get install -y iptables; \
+  apt-get install -y software-properties-common; \
+  add-apt-repository -y ppa:ethereum/ethereum; \
+  apt-get update; \
+  apt-get install -y ethereum;
+
+ENTRYPOINT [&quot;/node/start.sh&quot;]
+CMD [&quot;&quot;]
+</code></pre>
+
+<p><strong>regular node (start.sh)</strong></p>
+
+<pre><code class="language-bash">#!/usr/bin/env bash
+set -e
+
+msg() {
+  echo
+  echo $1
+  echo
+}
+
+geth --datadir /node/data init /node/genesis.json
+
+BOOTNODES=&quot;&quot;
+
+if [[ -z $1 ]]; then
+  msg &quot;bootnodes not provided. Was it intended?&quot;
+else
+  msg &quot;Using bootnodes: $1&quot;
+  BOOTNODES=&quot;--bootnodes $1&quot;
+fi
+
+geth --datadir /node/data \
+     --networkid 5 \
+     --gasprice &quot;20000000000&quot; \
+     --targetgaslimit &quot;4712388&quot; \
+     --rpc --rpcport 8545 --rpcaddr &quot;0.0.0.0&quot; --rpcapi &quot;db,eth,net,web3,personal,web3&quot; \
+     --port 30303 $BOOTNODES \
+     2&gt;&gt;/node/blockchain.log
+
+</code></pre>
+
+<p><strong>miner</strong></p>
+
+<pre><code class="language-Dockerfile">FROM ubuntu
+
+WORKDIR /node
+
+ADD . /node
+
+EXPOSE 30303
+
+RUN apt-get update; \
+  apt-get install -y iproute2; \
+  apt-get install -y iptables; \
+  apt-get install -y software-properties-common; \
+  add-apt-repository -y ppa:ethereum/ethereum; \
+  apt-get update; \
+  apt-get install -y ethereum;
+
+ENTRYPOINT [&quot;/node/start.sh&quot;]
+CMD [&quot;&quot;]
+</code></pre>
+
+<p><strong>miner (start.sh)</strong></p>
+
+<pre><code class="language-bash">#!/usr/bin/env bash
+set -e
+
+msg() {
+  echo
+  echo $1
+  echo
+}
+
+geth --datadir /node/data init /node/genesis.json
+
+BOOTNODES=&quot;&quot;
+
+if [[ -z $1 ]]; then
+  msg &quot;bootnodes not provided. Was it intended?&quot;
+else
+  msg &quot;Using bootnodes: $1&quot;
+  BOOTNODES=&quot;--bootnodes $1&quot;
+fi
+
+geth --datadir /node/data \
+     --networkid 5 \
+     --gasprice &quot;20000000000&quot; \
+     --targetgaslimit &quot;4712388&quot; \
+     --port 30303 \
+     $BOOTNODES \
+     2&gt;&gt;/node/blockchain.log
+
+</code></pre>
+
+<p>We use the bootnode&rsquo;s <em>enode url</em> that we retrieved earlier from the <code>bootnode</code> as the docker <code>command</code> on both the <code>node</code> and the <code>miner</code>. It will be appended to the <code>entrypoint</code> command from the <code>node</code> and the <code>miner</code> dockerfiles when starting the container. This way, the regular blockchain nodes and the miners can be properly bootstrapped when joining the blockchain network.</p>
+
+<p>In all the cases we use the same <code>genesis.json</code> file:</p>
+
+<pre><code class="language-json">{
+  &quot;config&quot;: {
+        &quot;chainId&quot;: 5,
+        &quot;homesteadBlock&quot;: 0,
+        &quot;eip155Block&quot;: 0,
+        &quot;eip158Block&quot;: 0
+    },
+  &quot;alloc&quot;      : {},
+  &quot;coinbase&quot;   : &quot;0x0000000000000000000000000000000000000000&quot;,
+  &quot;difficulty&quot; : &quot;0x20000&quot;,
+  &quot;extraData&quot;  : &quot;&quot;,
+  &quot;gasLimit&quot;   : &quot;0x2fefd8&quot;,
+  &quot;nonce&quot;      : &quot;0x0000000000000072&quot;,
+  &quot;mixhash&quot;    : &quot;0x0000000000000000000000000000000000000000000000000000000000000000&quot;,
+  &quot;parentHash&quot; : &quot;0x0000000000000000000000000000000000000000000000000000000000000000&quot;,
+  &quot;timestamp&quot;  : &quot;0x00&quot;
+}
+</code></pre>
+
+<blockquote>
+<p>Notice that <code>chainId</code> matches <code>--networkid</code> in both <code>start.sh</code> file.</p>
+</blockquote>
+
+<p>In the docker compose file for the nodes stack we use <code>node.labels.name</code> in the
+placement constraints - this way we can place the miners and the regular nodes on the
+swarm nodes that best suit them:</p>
+
+<pre><code class="language-yaml">node:
+  deploy:
+    placement:
+      constraints:
+        - node.labels.name != miner
+
+...
+
+miner:
+  deploy:
+    placement:
+      constraints:
+        - node.labels.name == miner
+</code></pre>
+
+<p>We use the following instruction to create a label on a node:</p>
+
+<pre><code class="language-bash">docker node update --label-add name=miner test-net-miner-worker
+</code></pre>
+
+<blockquote>
+<p>Unfortunately, there is currently no easy way to check if the label was actually set.
+Currently, docker only supports filtering for engine-labels. The command above sets the label
+on the node itself, and node labels are currently not used (as of December 18, 2017) for filtering.
+So, the command below won&rsquo;t work:</p>
+
+<pre><code class="language-bash">&gt; docker node ls -f &quot;labels.name==miner&quot;
+</code></pre>
+</blockquote>
+
+<p>Before, we can deploy our <em>nodes</em> stack, we need to add the <code>test-net-miner-worker</code> machine to the swarm. Connect to the <code>test-net-miner-worker</code> machine (using the <code>env</code> trick) and run:</p>
+
+<pre><code class="language-bash">$ docker swarm join \
+    --token SWMTKN-1-33wtt119mlt3pcni82crdxcyxqqqt2o607opfwwj2so644f2v3-78zkfrynuxn8p20etff6i69j5 \
+    172.31.18.69:2377
+This node joined a swarm as a worker.
+</code></pre>
+
+<p>Recall that to get your current join token, you can run (from the swarm manager node - <code>test-net</code>):</p>
+
+<pre><code class="language-bash">$ docker swarm join-token -q worker
+SWMTKN-1-33wtt119mlt3pcni82crdxcyxqqqt2o607opfwwj2so644f2v3-78zkfrynuxn8p20etff6i69j5
+</code></pre>
+
+<p>We deploy the <em>nodes</em> stack from the swarm manager node (<code>test-net</code>) by running:</p>
+
+<pre><code class="language-bash">$ docker stack deploy -c docker-compose-nodes.yml nodes
+</code></pre>
+
+<p>Our network gets the following structure:</p>
+
+<p><img src="https://marcinczenko.github.io/img/docker-overlay-networks/test-net.svg" alt="test-net" /></p>
+
+<p><img src="https://marcinczenko.github.io/img/docker-overlay-networks/test-net-worker.svg" alt="test-net-worker" /></p>
+
+<p>This complements our tutorial on networking concepts in Docker Swarms.
+In the tutorial we referred to a realistic case of creating a private blockchain network with one bootnode, one regular node, and one miner. In the follow up, we will show how to deploy our network to Amazon AWS with <a href="https://cloud.docker.com/">Docker Cloud</a>, how to further configure the blockchain nodes using <a href="https://github.com/ethereum/go-ethereum/wiki/geth">Ethereum Geth</a>, and how to connect to the network using the <a href="https://ethereum.org">Ethereum Mist Wallet</a>.</p>
+
+          </div>
+        </div>
+        <div class="pagination"> 
+          <a class="btn next " href="https://marcinczenko.github.io/post/aurelia-redux/"> Next</a> 
+        </div>
+      </div>
+    </div>
+    
+    <div id="disqus_thread"></div>
+    <script>
+      var disqus_config = function () {
+        this.page.url = "https://marcinczenko.github.io/post/docker-swarm-networking/";
+        
+      };
+      (function() {
+        var d = document, s = d.createElement('script');
+        s.src = '//marcinczenko.disqus.com/embed.js';
+        s.setAttribute('data-timestamp', +new Date());
+        (d.head || d.body).appendChild(s);
+      })();
+    </script>
+    <noscript>Please enable JavaScript to view the <a href="https://disqus.com/?ref_noscript" rel="nofollow">comments powered by Disqus.</a></noscript>
+    
+    <div class="footer">
+  
+  <p>Powered by <a href="http://gohugo.io">Hugo</a>. This theme—Slim—is open sourced on <a href="https://github.com/zhe/hugo-theme-slim">Github</a>.</p>
+  
+</div>
+
+  </div>
+  <script src="https://marcinczenko.github.io/js/slim.js"></script>
+  <script src="https://marcinczenko.github.io/js/highlight.min.js"></script>
+  <script>
+    hljs.initHighlightingOnLoad();
+  </script>
+  
+</body>
+
+</html>
